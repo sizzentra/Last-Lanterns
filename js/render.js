@@ -47,6 +47,7 @@ const Render = (() => {
     const cx = meS ? V.me.x : 0, cy = meS ? V.me.y : 0;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     const MP = MAPS[s.mp] || MAPS.fields; ctx.fillStyle = MP.bg; ctx.fillRect(0, 0, W, H);
+    if (s.fz & 2048) V.shake = 13; // Earthquake
     const shk = V.shake > 0.3 ? V.shake : 0; V.shake *= 0.86;
     const zs = scale * (s.fz & 4 ? 1.75 : 1) * (s.fz & 8 ? -1 : 1); // Dramatic Zoom, and Down Under flips the whole world
     ctx.setTransform(zs, 0, 0, zs, W / 2 - cx * zs + (Math.random() - 0.5) * shk, H / 2 - cy * zs + (Math.random() - 0.5) * shk);
@@ -148,6 +149,7 @@ const Render = (() => {
         const e = L[i], x = L[i + 1], y = L[i + 2];
         if (e.st & 16) { ctx.fillStyle = '#cfefffaa'; ctx.beginPath(); circ(x, y, T.r + 2); ctx.fill(); }
         else if (e.st & 15) { ctx.strokeStyle = MARKC[e.st & 1 ? 0 : e.st & 2 ? 1 : e.st & 4 ? 2 : 3]; ctx.beginPath(); circ(x, y, T.r + 2); ctx.stroke(); }
+        if (e.st & 1024) { const hy = y - T.r * SZ(e); ctx.fillStyle = '#ff5ad0'; ctx.beginPath(); ctx.moveTo(x - 7, hy + 2); ctx.lineTo(x + 7, hy + 2); ctx.lineTo(x, hy - 15); ctx.fill(); ctx.fillStyle = '#ffe45c'; ctx.beginPath(); circ(x, hy - 16, 3); ctx.fill(); } // a little party hat
         if (e.st & 64) { ctx.strokeStyle = '#6bb8ff'; ctx.beginPath(); circ(x, y, T.r + 5); ctx.stroke(); }
         if (e.st & 32) { ctx.strokeStyle = '#ff3030'; ctx.lineWidth = 5; ctx.beginPath(); circ(x, y, T.r + 14 + 8 * Math.sin(now / 50)); ctx.stroke(); ctx.lineWidth = 2.5; }
         if (T.big && t !== 5) { ctx.fillStyle = '#400'; ctx.fillRect(x - 28, y - T.r - 12, 56, 5); ctx.fillStyle = '#ff5a4a'; ctx.fillRect(x - 28, y - T.r - 12, 56 * e.hp / 100, 5); }
@@ -212,12 +214,18 @@ const Render = (() => {
       if (UN) ctx.restore();
       ctx.fillStyle = '#300'; ctx.fillRect(x - 22, y + 21, 44, 5); ctx.fillStyle = p.hp / p.max > 0.35 ? '#6be06a' : '#ff5a4a'; ctx.fillRect(x - 22, y + 21, 44 * Math.max(0, p.hp / p.max), 5);
       if (id !== myId) { ctx.fillStyle = '#ddd'; ctx.font = '12px system-ui'; ctx.fillText(b.name || '', x, y - 22); }
+      if (s.po && s.po[0] === id) { ctx.font = '30px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String.fromCodePoint(0x1F4A3), x, y - 34 + Math.sin(now / 60) * 3); ctx.font = '900 20px system-ui'; ctx.fillStyle = s.po[1] <= 3 ? '#ff3030' : '#fff'; ctx.fillText(s.po[1], x + 26, y - 38); }
     }
     ctx.globalCompositeOperation = 'source-over';
     // enemy shots always on top, in warning red
     for (const p of late) { ctx.fillStyle = '#ff2d2d'; ctx.beginPath(); circ(p[0], p[1], 8); ctx.fill(); ctx.fillStyle = '#ffd0d0'; ctx.beginPath(); circ(p[0], p[1], 3.5); ctx.fill(); }
     // names over the meme elites
     if (s.el) { ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0'; for (let i = 0; i < s.el.length; i += 2) { const e = c.E.get(s.el[i]); if (e && ARCH[s.el[i + 1]]) ctx.fillText(ARCH[s.el[i + 1]].n, e.x, e.y - 48); } }
+    if (s.hz && s.hz.length) for (let i = 0; i < s.hz.length; i += 4) { // lava pools: outline first as a warning, then live
+      const hx = s.hz[i], hy = s.hz[i + 1], hr = s.hz[i + 2], live = s.hz[i + 3];
+      ctx.strokeStyle = '#ff5a1a'; ctx.lineWidth = 4; ctx.beginPath(); circ(hx, hy, hr); ctx.stroke();
+      if (live) { ctx.globalAlpha = 0.45 + 0.12 * Math.sin(now / 130 + hx); ctx.fillStyle = '#ff5a1a'; ctx.beginPath(); circ(hx, hy, hr); ctx.fill(); ctx.fillStyle = '#ffd24a'; ctx.beginPath(); circ(hx, hy, hr * 0.55); ctx.fill(); ctx.globalAlpha = 1; }
+    }
     if (s.br) { // Battle Royale circle: everything outside it is the storm
       ctx.strokeStyle = '#b070ff'; ctx.lineWidth = 6; ctx.beginPath(); circ(s.br[0], s.br[1], s.br[2]); ctx.stroke();
       ctx.fillStyle = 'rgba(120,40,200,0.2)'; ctx.beginPath(); ctx.rect(s.br[0] - 4000, s.br[1] - 4000, 8000, 8000); ctx.arc(s.br[0], s.br[1], s.br[2], 0, 6.2832, true); ctx.fill();
@@ -232,6 +240,20 @@ const Render = (() => {
     const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.72)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
     if (s.rl) { ctx.fillStyle = s.rl === 2 ? 'rgba(255,0,0,0.16)' : 'rgba(0,255,90,0.09)'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'center'; ctx.font = '900 44px system-ui'; ctx.fillStyle = s.rl === 2 ? '#ff4040' : '#5dff8a'; ctx.fillText(s.rl === 2 ? 'RED LIGHT: DO NOT MOVE' : 'GREEN LIGHT', W / 2, H * 0.4); }
+    if (s.fz & 1024) { const dg = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, Math.min(W, H) * 0.34); dg.addColorStop(0, 'rgba(0,0,0,0)'); dg.addColorStop(1, 'rgba(0,0,0,0.97)'); ctx.fillStyle = dg; ctx.fillRect(0, 0, W, H); } // Lights Out
+    if (s.fz & 512) { const fl = Math.sin(now / 55); if (fl > 0.55) { ctx.fillStyle = 'rgba(255,255,255,' + (fl - 0.3) + ')'; ctx.fillRect(0, 0, W, H); } } // Paparazzi
+    if (s.fz & 256) { // Chat Is Typing: a fake stream chat scrolls up the right side
+      ctx.textAlign = 'left'; ctx.font = 'bold 15px system-ui'; const base = Math.floor(now / 380);
+      for (let i = 0; i < 13; i++) { const n = base - i, yy = H * 0.22 + (12 - i) * 26 - ((now / 380) % 1) * 26; ctx.fillStyle = 'hsl(' + ((n * 67) % 360) + ',80%,70%)'; ctx.fillText('user' + ((n * 7919) % 997) + ':', W - 300, yy); ctx.fillStyle = '#fff'; ctx.fillText(QUIPS.chat[((n * 31) % QUIPS.chat.length + QUIPS.chat.length) % QUIPS.chat.length], W - 205, yy); }
+      ctx.textAlign = 'center';
+    }
+    if (s.fz & 64) { ctx.fillStyle = 'rgba(0,0,0,0.9)'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'center'; ctx.fillStyle = '#ff3030'; ctx.font = '900 ' + Math.min(110, W / 8) + 'px system-ui'; ctx.fillText('GAME OVER', W / 2, H / 2); ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui'; ctx.fillText(Math.floor(now / 900) % 2 ? 'just kidding' : 'you have died of embarrassment', W / 2, H / 2 + 60); }
+    if (s.fz & 128) { ctx.fillStyle = '#0a4fd6'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = '120px system-ui'; ctx.fillText(':(', W * 0.12, H * 0.34); ctx.font = '24px system-ui'; ctx.fillText('Your night ran into a problem and needs to restart.', W * 0.12, H * 0.48); ctx.fillText('We are just collecting some blame, then we will not fix it.', W * 0.12, H * 0.48 + 36); ctx.fillText(Math.min(100, Math.floor((now / 30) % 130)) + '% complete', W * 0.12, H * 0.48 + 96); ctx.font = '15px system-ui'; ctx.fillText('Stop code: SKILL_ISSUE_EXCEPTION', W * 0.12, H * 0.48 + 150); ctx.textAlign = 'center'; }
+    if (V.toasts) { // fake achievements, top right
+      V.toasts = V.toasts.filter(t => now - t.t < 4500); ctx.textAlign = 'left';
+      V.toasts.forEach((t, i) => { const age = (now - t.t) / 4500, sl = Math.min(1, age * 10) * (age > 0.9 ? (1 - age) * 10 : 1), tx = W - 330 * sl, ty = 70 + i * 62; ctx.fillStyle = 'rgba(20,16,40,0.92)'; ctx.fillRect(tx, ty, 320, 52); ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2; ctx.strokeRect(tx, ty, 320, 52); ctx.font = '26px system-ui'; ctx.fillText(String.fromCodePoint(0x1F3C6), tx + 10, ty + 36); ctx.fillStyle = '#ffd27a'; ctx.font = 'bold 12px system-ui'; ctx.fillText('ACHIEVEMENT UNLOCKED', tx + 52, ty + 20); ctx.fillStyle = '#fff'; ctx.font = 'bold 15px system-ui'; ctx.fillText(t.a, tx + 52, ty + 40); });
+      ctx.textAlign = 'center';
+    }
     if (s.fz & 2) { ctx.textAlign = 'center'; ctx.font = 'bold 20px system-ui'; ctx.fillStyle = '#ff9de0'; ctx.fillText('OPPOSITE DAY: your controls are reversed', W / 2, H * 0.34); }
     if (s.fz & 32) { // Unskippable Ad
       const A = QUIPS.ads[s.ad % QUIPS.ads.length], bw = Math.min(680, W * 0.8), bh = 190, bx = W / 2 - bw / 2, by = H * 0.3;
@@ -269,7 +291,7 @@ const Render = (() => {
         ctx.fillStyle = ur ? '#ffd27a' : '#333'; ctx.beginPath(); circ(ux, H - 46, 22); ctx.fill();
         if (ur) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 + Math.sin(now / 120); ctx.beginPath(); circ(ux, H - 46, 25); ctx.stroke(); }
         ctx.fillStyle = ur ? '#111' : '#999'; ctx.fillText(meS.ul < 0 ? 'Lv 6' : ur ? 'Q' : meS.ul, ux, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.ult, ux, H - 10); }
-      if (down) { ctx.fillStyle = '#fff'; ctx.font = 'bold 26px system-ui'; ctx.fillText('You are down. A friend can revive you.', W / 2, H / 2 - 110); }
+      if (down) { ctx.fillStyle = '#fff'; ctx.font = 'bold 26px system-ui'; ctx.font = '900 54px system-ui'; ctx.fillStyle = '#ff5a4a'; ctx.fillText(V.downLine || 'FLOOR NAP', W / 2, H / 2 - 150); ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui'; ctx.fillText('You are down. A friend can revive you.', W / 2, H / 2 - 110); }
     }
     if (V.world) { // minimap, bottom left
       const M = 150, mx = 12, my = H - M - 12, sc2 = M / (Sim.WORLD * 2), px = x => mx + (x + Sim.WORLD) * sc2, py = y => my + (y + Sim.WORLD) * sc2;

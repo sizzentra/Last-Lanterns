@@ -169,20 +169,21 @@
     if (s.bo && !snd.boss) { snd.boss = true; Sfx.play('boss'); Sfx.music(false); setTimeout(() => { if (inGame) Sfx.music(true, true); }, 900); }
     if (!!s.sh !== snd.sh) { if (snd.sh && !s.sh) Sfx.play('shrine'); snd.sh = !!s.sh; }
     const nowT = performance.now();
+    if (nowT > (snd.nextAch || (snd.nextAch = nowT + 9000))) { snd.nextAch = nowT + 11000 + Math.random() * 12000; (View.toasts = View.toasts || []).push({ a: QUIPS.pick(QUIPS.achievements), t: nowT }); Sfx.play('coin8'); }
     if (me2) {
       if (me2.hp < snd.hp - 0.5 && !(me2.fl & 1)) { const mb = View.builds.find(x => x.id === myId); Sfx.play(mb && mb.b.indexOf('duck') >= 0 ? 'squeak' : 'bonk'); }
-      snd.hp = me2.hp; const dn = !!(me2.fl & 1); if (dn && !snd.down) setTimeout(() => Sfx.say(['Bruh.', 'Oof.', 'Big oof.', 'Welp.', 'Skill issue.', 'Emotional damage.'][Math.random() * 6 | 0], 0.5, true), 900); snd.down = dn;
+      snd.hp = me2.hp; const dn = !!(me2.fl & 1); if (dn && !snd.down) View.downLine = QUIPS.pick(QUIPS.downSelf); if (dn && !snd.down) setTimeout(() => Sfx.say(['Bruh.', 'Oof.', 'Big oof.', 'Welp.', 'Skill issue.', 'Emotional damage.'][Math.random() * 6 | 0], 0.5, true), 900); snd.down = dn;
       if (!dn && me2.hp / me2.max < 0.25 && nowT - (snd.low || 0) > 20000) { snd.low = nowT; Sfx.say(QUIPS.pick(QUIPS.lowHp)); Sfx.play('error'); }
       if (!dn && !s.pz && !s.hd && nowT - lastInput > 12000 && nowT - (snd.afk || 0) > 30000) { snd.afk = nowT; Sfx.say(QUIPS.pick(QUIPS.afk)); }
     }
     for (const e of s.ev) { const k = e[0];
-      if (k === 'k') Sfx.play(Math.random() < 0.04 ? 'quack' : Math.random() < 0.3 ? 'pop' : 'kill');
-      else if (k === 'g-') { if (e[2] === myId) Sfx.play('gem'); }
+      if (k === 'k') { const r = Math.random(); Sfx.play(r < 0.03 ? 'quack' : r < 0.045 ? 'meow' : r < 0.08 ? 'slap' : r < 0.35 ? 'pop' : 'kill'); }
+      else if (k === 'g-') { if (e[2] === myId) Sfx.play(Math.random() < 0.15 ? 'coin8' : 'gem'); }
       else if (k === 'x') { if (e[3] >= 80) Sfx.play('boom'); }
       else if (k === 'z' || k === 'b') Sfx.play('zap');
       else if (k === 'A') { View.banner = { a: e[1], b: e[2], t: nowT }; Sfx.play(e[3]); if (String(e[1]).indexOf('EVOLVED') === 0) Sfx.play('evo'); Sfx.say(e[1] + '. ' + e[2], 0, true); }
       else if (k === 'V') { View.sub = { a: e[1], t: nowT }; Sfx.say(e[1]); }
-      else if (k === 'S') Sfx.play(e[1]);
+      else if (k === 'S') { if (e[1] === 'fakeboss') { Sfx.music(false); setTimeout(() => { if (inGame) Sfx.music(true, true); }, 300); setTimeout(() => { if (inGame && !snd.boss) { Sfx.music(false); setTimeout(() => { if (inGame) Sfx.music(true); }, 900); } }, 9000); } else Sfx.play(e[1]); }
       else if (k === 'T') { if (e[1] === myId) { View.me.x = e[2]; View.me.y = e[3]; } }
       else if (k === 'W') { View.fx.push({ e: ['t', e[1], e[2], e[3], e[4]], t: nowT }); Sfx.say(e[3], 1.9); }
     }
@@ -244,7 +245,7 @@
   let curRr = 0, curBn = 0, curKind = '';
   function showCards(m) {
     curCards = m.cards; picked = false; curRr = m.rr || 0; curBn = m.bn || 0; curKind = m.kind;
-    $('cardsTitle').textContent = m.kind === 'boon' ? 'The shrine is lit: choose a Boon' : m.kind === 'chest' ? 'Elite chest: a free upgrade' : 'Level up! Choose one';
+    $('cardsTitle').textContent = QUIPS.pick(m.kind === 'boon' ? QUIPS.boonTitles : m.kind === 'chest' ? QUIPS.chestTitles : QUIPS.cardTitles); Sfx.play(m.kind === 'level' ? 'powerup' : 'drumroll');
     $('cardsSub').textContent = 'Press 1, 2 or 3, or click.';
     $('cardList').innerHTML = m.cards.map(cardHtml).join('') + `<div class="rr"><button id="rrBtn" ${curRr > 0 ? '' : 'disabled'}>Reroll (R) &middot; ${curRr} left</button>${curBn > 0 ? ` <small>${curBn} banish left</small>` : ''}</div>`;
     $('cards').classList.remove('hidden');
@@ -347,7 +348,7 @@
         <li>Collect the sparks enemies drop. The whole team shares one level bar; on a level-up everyone picks one card (keys <b>1 2 3</b>).</li>
         <li>Weapons leave marks: <b style="color:#ff8a3c">Burn</b>, <b style="color:#7fd8ff">Chill</b>, <b style="color:#ffe45c">Shock</b>, <b style="color:#8be06a">Rot</b>. Two different marks on one enemy cause a <b>reaction</b>. Your friends' marks count too.</li>
         <li>Two or more weapons of the same element make that element stronger.</li>
-        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li>The <b>minimap</b> (bottom left) shows landmarks worth walking to: orange <b>Ember Caches</b> (Embers and XP), green <b>Healing Wells</b>, and the pale <b>Old Bell</b>, which stuns every enemy around it. Rocks block you and the enemies. A yellow <b>Firefly Cart</b> sometimes asks for an escort: it only moves while someone walks beside it, and pays a Boon when it arrives.</li><li><b>Esc</b> pauses (the host pauses for everyone) and lets you end the night early with your rewards.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
+        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li>The <b>minimap</b> (bottom left) shows landmarks worth walking to: orange <b>Ember Caches</b> (Embers and XP), green <b>Healing Wells</b>, and the pale <b>Old Bell</b>, which stuns every enemy around it. Rocks block you and the enemies. A yellow <b>Firefly Cart</b> sometimes asks for an escort: it only moves while someone walks beside it, and pays a Boon when it arrives.</li><li><b>E</b> makes your keeper yell something stupid for everyone to hear. <b>G</b> honks. There is no reason for either.</li><li><b>Esc</b> pauses (the host pauses for everyone) and lets you end the night early with your rewards.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
         <li>Stand in a glowing <b>shrine</b> circle to earn a Boon. Defeat red <b>elites</b> for a chest.</li>
         <li>If a friend goes down, stand in their circle to revive them. If everyone is down, the night ends.</li>
         <li>Watch for red flashing rings (an enemy about to charge or explode), blue rings (a Warder is shielding that enemy: kill the Warder first) and purple Dark Bargain circles (optional: a harder 45 seconds for a big reward).</li><li>Survive 12 minutes, then defeat the boss. Win or lose, you keep Embers and experience.</li></ul>`;
@@ -389,6 +390,8 @@
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3' || e.code === 'Digit4') pickCard(+e.code.slice(5) - 1);
     if (e.code === 'KeyR') reroll();
     if (e.code === 'KeyM') muteBtn();
+    if (e.code === 'KeyE' && !e.repeat) skLatch |= 4;
+    if (e.code === 'KeyG') skLatch |= 8;
     if (e.code === 'Tab') { e.preventDefault(); showStats(true); }
     if (e.code === 'Escape' && role !== 'client' && Sim.G && !Sim.G.pause) Sim.hold(!Sim.G.hold);
     if (e.code === 'KeyQ' && !e.repeat) tryUlt();

@@ -123,6 +123,7 @@ const ENEMIES = [
   { id: 'wisp',    hp: 14,   spd: 150, dmg: 20, r: 9,  xp: 2,  c: '#ff9a3c' },   // rushes in and explodes
   { id: 'warden',  hp: 5000, spd: 60,  dmg: 24, r: 38, xp: 60, c: '#8a4fd0', big: true, chest: true }, // mini-boss
   { id: 'goose',   hp: 300,  spd: 170, dmg: 0,  r: 14, xp: 0,  c: '#ffd700' },   // the Golden Goose: runs away, pays out if caught
+  { id: 'greg',    hp: 250,  spd: 150, dmg: 0,  r: 13, xp: 0,  c: '#5dff8a' },   // Greg. He is friendly.
 ];
 
 const MAPS = {

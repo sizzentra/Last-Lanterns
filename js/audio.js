@@ -24,7 +24,7 @@ const Sfx = (() => {
     const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
     s.buffer = b; f.type = 'lowpass'; f.frequency.value = cut; g.gain.value = gain; s.connect(f); f.connect(g); g.connect(master); s.start();
   }
-  const GAP = { kill: 55, gem: 45, boom: 140, zap: 80, hurt: 220, bonk: 200, quack: 300, pop: 60, squeak: 200, bong: 600, airhorn: 900, cash: 150 };
+  const GAP = { kill: 55, gem: 45, boom: 140, zap: 80, hurt: 220, bonk: 200, quack: 300, pop: 60, squeak: 200, bong: 600, airhorn: 900, cash: 150, sizzle: 250, laugh: 1500, scream: 800, explode: 150, siren: 2500, applause: 2000, hic: 100, pew: 90, slap: 150 };
   const SOUNDS = {
     kill: () => tone(170 + Math.random() * 90, 0.06, 'triangle', 0.05, 0.5),
     gem: () => tone(880 + Math.random() * 260, 0.05, 'sine', 0.035),
@@ -62,6 +62,35 @@ const Sfx = (() => {
     pop: () => tone(430, 0.05, 'sine', 0.13, 3.2),
     raspberry: () => { const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.5); l.type = 'square'; l.frequency.value = 31; lg.gain.value = 0.11; g.gain.value = 0.11; l.connect(lg); lg.connect(g.gain); g.gain.setValueAtTime(0.11, t); g.gain.linearRampToValueAtTime(0.0001, t + 0.55); o.connect(g); g.connect(master); o.start(t); l.start(t); o.stop(t + 0.56); l.stop(t + 0.56); },
     error: () => { tone(392, 0.14, 'square', 0.09); tone(294, 0.3, 'square', 0.09, 0, 0.15); },
+    // --- second helping ---
+    rimshot: () => { tone(190, 0.09, 'triangle', 0.2, 0.6); tone(150, 0.09, 'triangle', 0.2, 0.6, 0.14); noise(0.5, 0.13, 9000); tone(6000, 0.4, 'square', 0.015, 0, 0.3); },   // ba dum tss
+    laugh: () => { for (let i = 0; i < 7; i++) { tone(520 - i * 28 + Math.random() * 40, 0.09, 'sawtooth', 0.07, 0.8, i * 0.11); tone(780 - i * 30, 0.08, 'triangle', 0.04, 0.8, i * 0.11 + 0.02); } },  // canned ha ha ha
+    crickets: () => { for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) tone(4300, 0.03, 'sine', 0.045, 0, i * 0.32 + j * 0.045); },
+    kazoo: () => [[392, 0], [392, 0.15], [523, 0.3], [659, 0.45], [784, 0.62]].forEach(([f, d], i) => { tone(f, i === 4 ? 0.5 : 0.13, 'sawtooth', 0.09, 0, d); tone(f * 1.01, i === 4 ? 0.5 : 0.13, 'square', 0.05, 0, d); }),
+    siren: () => { for (let i = 0; i < 4; i++) { tone(700, 0.22, 'sawtooth', 0.07, 1.45, i * 0.44); tone(1015, 0.22, 'sawtooth', 0.07, 0.69, i * 0.44 + 0.22); } },    // wee woo wee woo
+    applause: () => { for (let i = 0; i < 26; i++) setTimeout(() => { if (ac) noise(0.07, 0.05 + Math.random() * 0.05, 2500 + Math.random() * 3000); }, i * 55 + Math.random() * 40); },
+    scream: () => { tone(900, 0.45, 'sawtooth', 0.1, 1.9); tone(1350, 0.45, 'square', 0.04, 1.6); tone(1600, 0.3, 'sawtooth', 0.07, 0.4, 0.42); },                       // a small cartoon aaaAAAaah
+    explode: () => { noise(0.6, 0.3, 900); tone(110, 0.5, 'sawtooth', 0.2, 0.25); tone(55, 0.7, 'sine', 0.3, 0.5); },
+    sizzle: () => noise(0.18, 0.07, 7000),
+    hic: () => tone(500, 0.07, 'sine', 0.14, 2.6),
+    camera: () => { noise(0.03, 0.18, 8000); tone(2400, 0.03, 'square', 0.05, 0, 0.05); noise(0.05, 0.12, 5000); },
+    rumble: () => { tone(48, 2.2, 'sawtooth', 0.22, 0.8); noise(2.2, 0.16, 180); },
+    choir: () => [261.6, 329.6, 392, 523.2].forEach((f, i) => { tone(f, 1.8, 'sine', 0.08, 0, i * 0.05); tone(f * 2.005, 1.8, 'triangle', 0.03, 0, i * 0.05); }),         // aaaaah
+    drumroll: () => { for (let i = 0; i < 22; i++) tone(170, 0.04, 'triangle', 0.06 + i * 0.005, 0.7, i * 0.045); noise(0.5, 0.14, 9000); tone(150, 0.3, 'triangle', 0.2, 0.5, 1.02); },
+    rewind: () => { tone(300, 0.9, 'sawtooth', 0.08, 6); noise(0.9, 0.06, 4000); },
+    pew: () => tone(1500, 0.12, 'square', 0.05, 0.15),
+    whoosh: () => { const n = ac.sampleRate * 0.3 | 0, b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(i / n * Math.PI); const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = b; f.type = 'bandpass'; f.frequency.setValueAtTime(400, ac.currentTime); f.frequency.exponentialRampToValueAtTime(3000, ac.currentTime + 0.28); g.gain.value = 0.2; s.connect(f); f.connect(g); g.connect(master); s.start(); },
+    zip: () => tone(250, 0.14, 'sawtooth', 0.08, 7),
+    uhoh: () => { tone(440, 0.16, 'triangle', 0.14); tone(330, 0.3, 'triangle', 0.14, 0, 0.2); },
+    wow: () => { tone(300, 0.5, 'sawtooth', 0.09, 2.2); tone(600, 0.5, 'sine', 0.06, 1.6); },
+    meow: () => { tone(700, 0.18, 'sawtooth', 0.06, 1.5); tone(1050, 0.3, 'sawtooth', 0.06, 0.55, 0.17); },
+    powerup: () => [330, 392, 494, 587, 698, 880, 1047].forEach((f, i) => tone(f, 0.07, 'square', 0.06, 0, i * 0.045)),                                              // 8-bit power up
+    coin8: () => { tone(988, 0.07, 'square', 0.07); tone(1319, 0.3, 'square', 0.07, 0, 0.07); },
+    alarm: () => { for (let i = 0; i < 6; i++) tone(1900, 0.07, 'square', 0.06, 0, i * 0.14); },
+    violin: () => [[440, 0], [415, 0.5], [392, 1.0], [349, 1.5]].forEach(([f, d]) => { tone(f, 0.55, 'sawtooth', 0.05, 0, d); tone(f * 1.006, 0.55, 'sawtooth', 0.04, 0, d); }),  // the world's smallest
+    toot: () => tone(233, 0.3, 'square', 0.1, 0.94),
+    slap: () => { noise(0.05, 0.3, 5000); tone(300, 0.05, 'triangle', 0.15, 0.4); },
+    gong: () => { [1, 1.5, 2.1, 2.9, 4.2].forEach((m, i) => tone(110 * m, 3 - i * 0.4, 'sine', 0.16 / (i + 1))); noise(0.3, 0.08, 1200); },
   };
   // the announcer: the browser's own text-to-speech voice
   let lastSay = 0;
