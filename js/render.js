@@ -60,8 +60,8 @@ const Render = (() => {
     ctx.strokeStyle = '#3a2f66'; ctx.lineWidth = 6; ctx.strokeRect(-Sim.WORLD, -Sim.WORLD, Sim.WORLD * 2, Sim.WORLD * 2);
 
     // zones
-    const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0', '#7fd8ff'];
-    for (let k = 0; k < 4; k++) {
+    const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0', '#7fd8ff', 0, 0, '#ffe9a0'];
+    for (const k of [0, 1, 2, 3, 6]) {
       ctx.fillStyle = zc[k]; ctx.globalAlpha = k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : k === 3 ? 0.1 : 0.2; ctx.beginPath();
       for (let i = 0; i < Z.length; i += 4) if (Z[i] === k && vis(Z[i + 1], Z[i + 2])) circ(Z[i + 1], Z[i + 2], Z[i + 3]);
       ctx.fill();
@@ -69,7 +69,7 @@ const Render = (() => {
     ctx.globalAlpha = 1;
     // planted things: lightning rods and sproutlings
     for (let i = 0; i < Z.length; i += 4) {
-      if (Z[i] < 4 || !vis(Z[i + 1], Z[i + 2])) continue;
+      if ((Z[i] !== 4 && Z[i] !== 5) || !vis(Z[i + 1], Z[i + 2])) continue;
       const x = Z[i + 1], y = Z[i + 2], rod = Z[i] === 4;
       gl(rod ? '#ffe45c' : '#8be06a', x, y, 34);
       ctx.fillStyle = rod ? '#ffe45c' : '#8be06a';
@@ -165,7 +165,7 @@ const Render = (() => {
         continue;
       }
       ctx.globalCompositeOperation = 'lighter';
-      gl(C.c, x, y, p.fl & 16 ? 230 + 20 * Math.sin(now / 70) : 120); if (p.fl & 2) gl('#ffffff', x, y, 60 + 10 * Math.sin(now / 60));
+      gl(C.c, x, y, p.fl & 16 ? 250 + 20 * Math.sin(now / 70) : 120 + Math.min(110, s.lv * 2.2)); if (p.fl & 2) gl('#ffffff', x, y, 60 + 10 * Math.sin(now / 60));
       ctx.globalCompositeOperation = 'source-over';
       if (p.fl & 8) { ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = 3; ctx.beginPath(); circ(x, y, 21); ctx.stroke(); }
       ctx.fillStyle = '#1b1830'; ctx.beginPath(); circ(x, y, 14); ctx.fill();
@@ -186,6 +186,7 @@ const Render = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.72)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,225,160,' + (V.flash * 0.35) + ')'; ctx.fillRect(0, 0, W, H); V.flash *= 0.9; }
     ctx.fillStyle = '#1a1730'; ctx.fillRect(0, 0, W, 14); ctx.fillStyle = '#ffd27a'; ctx.fillRect(0, 0, W * Math.min(1, s.xp / s.xn), 14);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 22px system-ui';
     const tm = Math.floor(s.tm); ctx.fillText(Math.floor(tm / 60) + ':' + String(tm % 60).padStart(2, '0'), W / 2, 44);

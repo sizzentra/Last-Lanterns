@@ -93,6 +93,18 @@ const CHARS = {
   bryn:     { name: 'Bryn',     title: 'the gardener',     c: '#8be06a', weapon: 'thorns', passive: 'Heals over time, +20 health',
               skill: 'Bloom Circle', ult: 'Verdant Tide', ultDesc: 'Revive and heal everyone, and grow a huge thorn field.', skillDesc: 'A healing ring for everyone inside it.', cd: 14,
               f: s => { s.regen += 1.2; s.maxhp += 20; }, goal: 'shrine2' },
+  oda:      { name: 'Oda',      title: 'the moth-keeper',  c: '#d0a8ff', weapon: 'moths',  passive: '+1 projectile on everything',
+              skill: 'Swarm Call', skillDesc: 'Moths burst outward, heaping Rot on everything near you.', cd: 8, ult: 'Chrysalis', ultDesc: 'Four seconds untouchable, then a huge burst of Rot.',
+              f: s => { s.proj += 1; }, goal: 'evo3' },
+  sable:    { name: 'Sable',    title: 'the lamplighter',  c: '#fff2b0', weapon: 'beam',   passive: '+10% crit chance',
+              skill: 'Beacon', skillDesc: 'Plant a light. Everyone standing in it deals 25% more damage.', cd: 12, ult: 'Sunburst', ultDesc: 'Three waves of light across the whole screen.',
+              f: s => { s.crit += 0.1; }, goal: 'warden' },
+  pip:      { name: 'Pip',      title: 'the tinker',       c: '#ff9de0', weapon: 'darts',  rand: true, passive: 'A random starting weapon, and one extra card on every level-up',
+              skill: 'Jury-Rig', skillDesc: 'All weapons fire at once, then twice as fast for 3 seconds.', cd: 10, ult: 'Overdrive', ultDesc: 'Six seconds of weapons firing three times as fast.',
+              f: s => { s.cards += 1; }, goal: 'react500' },
+  gran:     { name: 'Gran Hollow', title: 'the old keeper', c: '#b0c4de', weapon: 'sickle', passive: 'Starts with a random Boon and +10% damage, but 20 less health',
+              skill: 'Lantern Flash', skillDesc: 'Stun every enemy near you for 2 seconds.', cd: 10, ult: 'Last Light', ultDesc: 'Revive everyone, heal, and make the whole team untouchable for 4 seconds.',
+              f: s => { s.maxhp -= 20; s.dmg += 0.1; }, goal: 'win2' },
 };
 const CHAR_IDS = Object.keys(CHARS);
 
@@ -147,14 +159,14 @@ const GOALS = {
   min8:    { name: 'Long Night',      desc: 'Survive 8 minutes',                reward: 'Unlocks the weapon Sproutling', test: r => r.time >= 480 },
   win:     { name: 'First Dawn',      desc: 'Win a night',                      reward: '300 Embers and the weapon Judgement, and the Sunken Mire map', embers: 300, test: r => r.win },
   coop:    { name: 'Better Together', desc: 'Survive 3 minutes with a friend',       reward: '100 Embers', embers: 100, test: r => r.players >= 2 && r.time >= 180 },
-  evo3:    { name: 'Walking Storm',   desc: 'Evolve 3 weapons in one run',      reward: '250 Embers', embers: 250, test: r => r.evos >= 3 },
+  evo3:    { name: 'Walking Storm',   desc: 'Evolve 3 weapons in one run',      reward: '250 Embers and the keeper Oda', embers: 250, test: r => r.evos >= 3 },
   lvl20:   { name: 'Burning Bright',  desc: 'Reach level 20 in a run',          reward: 'Unlocks the weapon Ball Lightning', test: r => r.level >= 20 },
   boon3:   { name: 'Blessed',         desc: 'Hold 3 Boons in one run',          reward: 'Unlocks the weapon Halo', test: r => r.boons >= 3 },
-  react500: { name: 'Mad Science',    desc: 'Cause 500 reactions in one run',   reward: '250 Embers', embers: 250, test: r => r.reactions >= 500 },
+  react500: { name: 'Mad Science',    desc: 'Cause 500 reactions in one run',   reward: '250 Embers and the keeper Pip', embers: 250, test: r => r.reactions >= 500 },
   lvl40:   { name: 'Godlight',        desc: 'Reach level 40 in a run',          reward: '400 Embers', embers: 400, test: r => r.level >= 40 },
   bargain: { name: 'A Deal is a Deal', desc: 'Accept and survive a Dark Bargain',  reward: '150 Embers', embers: 150, test: r => r.bargains >= 1 },
-  warden:  { name: 'Warden Breaker',  desc: 'Defeat a Gloom Warden',             reward: '150 Embers', embers: 150, test: r => r.wardens >= 1 },
-  win2:    { name: 'Silence the Bell', desc: 'Defeat the Drowned Bell in the Sunken Mire', reward: '500 Embers', embers: 500, test: r => r.win && r.map === 'mire' },
+  warden:  { name: 'Warden Breaker',  desc: 'Defeat a Gloom Warden',             reward: '150 Embers and the keeper Sable', embers: 150, test: r => r.wardens >= 1 },
+  win2:    { name: 'Silence the Bell', desc: 'Defeat the Drowned Bell in the Sunken Mire', reward: '500 Embers and the keeper Gran Hollow', embers: 500, test: r => r.win && r.map === 'mire' },
 };
 
 // Account maths shared by menus and the game.

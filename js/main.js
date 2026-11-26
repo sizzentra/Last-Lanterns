@@ -10,6 +10,10 @@
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   let role = 'solo', myId = 0, party = [], inGame = false, nextPid = 1, tick = 0, netEv = [];
+  let snd = { lv: 1, hp: 0, boss: false, down: false, sh: false };
+  const muteBtn = () => { $('mute').textContent = Sfx.toggle() ? 'Sound: off (M)' : 'Sound: on (M)'; };
+  addEventListener('pointerdown', () => Sfx.init()); addEventListener('keydown', () => Sfx.init());
+  $('mute').onclick = muteBtn; $('mute').textContent = Sfx.muted ? 'Sound: off (M)' : 'Sound: on (M)';
   let picked = true, curCards = null, skLatch = false, dashT = 0, lastFrame = 0;
   const keys = {};
   const bossTime = +(new URLSearchParams(location.search).get('boss')) || 0;
@@ -125,7 +129,7 @@
     enterGame();
   };
   function enterGame() {
-    inGame = true; picked = true; curCards = null; skLatch = false; dashT = 0;
+    inGame = true; snd = { lv: 1, hp: 0, boss: false, down: false, sh: false }; Sfx.init(); Sfx.music(true); $('mute').classList.remove('hidden'); picked = true; curCards = null; skLatch = false; dashT = 0;
     View.reset(); $('camp').classList.add('hidden'); $('end').classList.add('hidden'); $('cards').classList.add('hidden'); $('build').classList.remove('hidden'); $('build').innerHTML = '';
   }
   function showCamp() { $('camp').classList.remove('hidden'); $('build').classList.add('hidden'); $('cards').classList.add('hidden'); renderCamp(); }
@@ -155,6 +159,12 @@
 
   function onSnap(s) {
     View.apply(s, myId);
+    const me2 = View.cur.P.get(myId);
+    if (s.lv > snd.lv) { snd.lv = s.lv; Sfx.play('level'); View.flash = 1; }
+    if (s.bo && !snd.boss) { snd.boss = true; Sfx.play('boss'); Sfx.music(false); setTimeout(() => { if (inGame) Sfx.music(true, true); }, 900); }
+    if (!!s.sh !== snd.sh) { if (snd.sh && !s.sh) Sfx.play('shrine'); snd.sh = !!s.sh; }
+    if (me2) { if (me2.hp < snd.hp - 0.5 && !(me2.fl & 1)) Sfx.play('hurt'); snd.hp = me2.hp; const dn = !!(me2.fl & 1); if (dn && !snd.down) Sfx.play('down'); snd.down = dn; }
+    for (const e of s.ev) { const k = e[0]; if (k === 'k') Sfx.play('kill'); else if (k === 'g-') { if (e[2] === myId) Sfx.play('gem'); } else if (k === 'x') { if (e[3] >= 80) Sfx.play('boom'); } else if (k === 'z' || k === 'b') Sfx.play('zap'); else if (k === 't' && String(e[3]).indexOf('EVOLVED') === 0) Sfx.play('evo'); }
     if (!s.pz && !$('cards').classList.contains('hidden')) $('cards').classList.add('hidden');
     else if (s.pz && curCards && !picked) $('cardsSub').textContent = `Press 1, 2 or 3, or click. Auto-picks in ${s.pz}s.`;
   }
@@ -200,7 +210,7 @@
   function reroll() { if (picked || !curCards || curRr <= 0) return; curRr = 0; if (role === 'client') Net.toHost({ t: 'rr' }); else Sim.redeal(myId); }
   function pickCard(i) {
     if (picked || !curCards || i >= curCards.length) return;
-    picked = true; $('cardList').innerHTML = ''; $('cardsTitle').textContent = 'Waiting for the others...'; $('cardsSub').textContent = '';
+    picked = true; Sfx.play('pick'); $('cardList').innerHTML = ''; $('cardsTitle').textContent = 'Waiting for the others...'; $('cardsSub').textContent = '';
     if (role === 'client') Net.toHost({ t: 'p', i }); else Sim.pick(myId, i);
   }
   $('cardList').onclick = e => {
@@ -208,11 +218,11 @@
     if (e.target.dataset.ban != null) { if (picked) return; const i = +e.target.dataset.ban; curBn = 0; if (role === 'client') Net.toHost({ t: 'bn', i }); else Sim.redeal(myId, i); return; }
     const el = e.target.closest('.card'); if (el) pickCard(+el.dataset.i);
   };
-  function tryUlt() { const c = View.cur, p = c && c.P.get(myId); if (!p || p.ul !== 0 || (p.fl & 1) || c.s.pz) return; skLatch |= 2; }
+  function tryUlt() { const c = View.cur, p = c && c.P.get(myId); if (!p || p.ul !== 0 || (p.fl & 1) || c.s.pz) return; skLatch |= 2; Sfx.play('ult'); }
 
   // ---------- end of a night: pay out lasting progress ----------
   function onEnd(R) {
-    if (!inGame) return; inGame = false;
+    if (!inGame) return; inGame = false; Sfx.music(false); Sfx.play(R.win ? 'win' : 'lose'); $('mute').classList.add('hidden');
     const mine = R.per[myId] || { kills: 0, dmgBy: {}, char: save.char }, gains = [];
     const rank0 = Account.rank(save.xp).lvl, k0 = Account.keeper(save.keeper[mine.char] || 0).lvl;
     const xp = Math.floor((R.time + R.kills * 0.2 + (R.win ? 300 : 0)) * R.mult);
@@ -326,6 +336,7 @@
     if (!inGame) return;
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3' || e.code === 'Digit4') pickCard(+e.code.slice(5) - 1);
     if (e.code === 'KeyR') reroll();
+    if (e.code === 'KeyM') muteBtn();
     if (e.code === 'KeyQ' && !e.repeat) tryUlt();
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) trySkill(); }
   });
@@ -334,7 +345,7 @@
   function trySkill() {
     const c = View.cur, p = c && c.P.get(myId); if (!p || p.sk || (p.fl & 1) || c.s.pz) return;
     const b = View.builds.find(x => x.id === myId); if (!b) return;
-    skLatch |= 1;
+    skLatch |= 1; Sfx.play('skill');
     if (b.char === 'wick') dashT = 0.28;
     else if (b.char === 'tolliver') { View.me.x += View.me.fx * 190; View.me.y += View.me.fy * 190; clampMe(); }
   }

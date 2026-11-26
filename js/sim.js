@@ -6,7 +6,7 @@ const Sim = (() => {
   const rnd = (a, b) => a + Math.random() * (b - a);
   const need = l => Math.floor(4 + 3 * l + 0.22 * l * l);
   const SHOT = { dart: 0, hail: 1, sickle: 2, spit: 3, orb: 4, seed: 5 };
-  const ZONE = { fire: 0, thorn: 1, heal: 2, aura: 3, rod: 4, sprout: 5 };
+  const ZONE = { fire: 0, thorn: 1, heal: 2, aura: 3, rod: 4, sprout: 5, beacon: 6 };
   const PAIRS = [['burn', 'chill', 'steam'], ['chill', 'shock', 'shatter'], ['burn', 'rot', 'wildfire'], ['shock', 'rot', 'spore'], ['burn', 'shock', 'overload'], ['chill', 'rot', 'frostbite']];
   const ASC = ['dmg', 'area', 'cdr', 'hp', 'crit'];
   const PICK = { heart: 0, magnet: 1, coin: 2, chest: 3 };
@@ -29,9 +29,10 @@ const Sim = (() => {
       p.rerolls = 1 + ((p.meta.h || {}).reroll || 0); p.banishes = (p.meta.h || {}).banish || 0;
       const mh = p.meta.h || {}, mf = p.meta.f || {};
       p.wslots = mh.kslot ? 6 : 5;
-      addWeapon(p, CHARS[p.char].weapon); if (mf.startLvl) p.weapons[0].lvl = 2;
+      let sw = CHARS[p.char].weapon; if (CHARS[p.char].rand) { const ok = Object.keys(WEAPONS).filter(w => (p.meta.lock || []).indexOf(w) < 0); sw = ok[Math.random() * ok.length | 0]; }
+      addWeapon(p, sw); if (mf.startLvl) p.weapons[0].lvl = 2;
       if (mh.kcharm) { const ids = Object.keys(CHARMS); p.charms.push({ id: ids[Math.random() * ids.length | 0], lvl: 1 }); }
-      if (mh.kboon) { const ids = Object.keys(BOONS).filter(b => !BOONS[b].r && b !== 'kindred' && b !== 'second'); p.boons.push(ids[Math.random() * ids.length | 0]); }
+      for (let i = (mh.kboon ? 1 : 0) + (p.char === 'gran' ? 1 : 0); i > 0; i--) { const ids = Object.keys(BOONS).filter(b => !BOONS[b].r && b !== 'kindred' && b !== 'second' && p.boons.indexOf(b) < 0); p.boons.push(ids[Math.random() * ids.length | 0]); }
       recompute(p); p.hp = p.st.maxhp; G.players.push(p);
     });
     return G;
@@ -269,7 +270,7 @@ const Sim = (() => {
   function weapons(p) {
     for (const w of p.weapons) {
       const f = FIRE[w.id];
-      if (f) { w.t -= DT; if (w.t <= 0) { const cd = f(p, w); w.t = cd ? cd / p.st.cdr : 0.25; if (cd && hasBoon(p, 'echo') && Math.random() < 0.2) w.t = 0.12; } continue; }
+      if (f) { w.t -= DT; if (w.t <= 0) { const cd = f(p, w); w.t = cd ? cd / (p.st.cdr * (p.rigT > 0 ? 2 : 1) * (p.ultT > 0 && p.char === 'pip' ? 3 : 1)) : 0.25; if (cd && hasBoon(p, 'echo') && Math.random() < 0.2) w.t = 0.12; } continue; }
       if (w.id === 'rime') {
         w.acc += DT;
         const r = (90 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1);
@@ -314,6 +315,10 @@ const Sim = (() => {
     else if (c === 'mara') { const r = 230 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#bfeeff'); inR(p.x, p.y, r, e => { e.frozen = Math.max(e.frozen, 2.2); hit(e, 30 * lv * p.st.dmg, p, 'skill', 'frost'); }); }
     else if (c === 'tolliver') { const r = 140 * p.st.area; fx('z', p.x | 0, p.y | 0, r | 0); inR(p.x, p.y, r, e => hit(e, 45 * lv * p.st.dmg, p, 'skill', 'storm')); }
     else if (c === 'bryn') zone(ZONE.heal, p.x, p.y, 150 * p.st.area, 4.5, 0, p, null);
+    else if (c === 'oda') { const r = 200 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#d0a8ff'); inR(p.x, p.y, r, e => { hit(e, 25 * lv * p.st.dmg, p, 'skill', 'bloom'); mark(e, 'rot', p, 'bloom'); mark(e, 'rot', p, 'bloom'); }); }
+    else if (c === 'sable') zone(ZONE.beacon, p.x, p.y, 170 * p.st.area, 6, 0, p, null);
+    else if (c === 'pip') { for (const w of p.weapons) w.t = 0; p.rigT = 3; }
+    else if (c === 'gran') { const r = 260 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#ffffff'); inR(p.x, p.y, r, e => { e.frozen = Math.max(e.frozen, 2); hit(e, 20 * lv * p.st.dmg, p, 'skill', 'light'); }); }
   }
   function ult(p) {
     if (p.down || p.ultCd > 0 || G.level < 6) return;
@@ -321,6 +326,10 @@ const Sim = (() => {
     p.ultCd = 45 / Math.min(1.6, p.st.cdr) * ((p.meta.f || {}).ultCd || 1);
     text(p.x, p.y - 44, CHARS[c].ult + '!', CHARS[c].c);
     if (c === 'wick' || c === 'tolliver') { p.ultT = 5; p.ultAcc = 1; }
+    else if (c === 'oda') { p.ultT = 4; p.inv = 4; }
+    else if (c === 'sable') { p.ultT = 1.6; p.ultAcc = 1; }
+    else if (c === 'pip') p.ultT = 6;
+    else if (c === 'gran') { for (const q of G.players) { if (q.down) { q.down = false; fx('r', q.x | 0, q.y | 0, 120, '#fff'); q.hp = q.st.maxhp * 0.5; } else q.hp = Math.min(q.st.maxhp, q.hp + q.st.maxhp * 0.3); q.inv = 4; } fx('r', p.x | 0, p.y | 0, 400, '#ffffff'); }
     else if (c === 'mara') { fx('r', p.x | 0, p.y | 0, 620, '#bfeeff'); fx('x', p.x | 0, p.y | 0, 300, '#bfeeff'); inR(p.x, p.y, 620, e => { e.frozen = Math.max(e.frozen, 4); e.chill = 6; hit(e, 60 * lv, p, 'ult', 'frost'); }); }
     else {
       for (const q of G.players) { if (q.down) { q.down = false; q.inv = 3; q.hp = q.st.maxhp * 0.6; fx('r', q.x | 0, q.y | 0, 120, '#9dffb0'); } else q.hp = Math.min(q.st.maxhp, q.hp + q.st.maxhp * 0.5); }
@@ -330,6 +339,8 @@ const Sim = (() => {
   }
   function ultTick(p) {
     p.ultT -= DT; p.ultAcc += DT;
+    if (p.char === 'oda' && p.ultT <= 0) { const r = 360 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#d0a8ff'); fx('x', p.x | 0, p.y | 0, r | 0, '#8be06a'); inR(p.x, p.y, r, e => { hit(e, 120 * (1 + G.level * 0.1) * p.st.dmg, p, 'ult', 'bloom'); mark(e, 'rot', p, 'bloom'); mark(e, 'rot', p, 'bloom'); }); }
+    if (p.char === 'sable' && p.ultAcc >= 0.5) { p.ultAcc = 0; const r = 540 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#fff2b0'); inR(p.x, p.y, r, e => hit(e, 45 * (1 + G.level * 0.1) * p.st.dmg, p, 'ult', 'light')); }
     const lv = (1 + G.level * 0.1) * p.st.dmg;
     if (p.char === 'wick' && p.ultAcc >= 0.5) { p.ultAcc = 0; const r = 250 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#ff7a2a'); inR(p.x, p.y, r, e => hit(e, 28 * lv, p, 'ult', 'ember')); }
     else if (p.char === 'tolliver' && p.ultAcc >= 0.15) { p.ultAcc = 0; const c = []; inR(p.x, p.y, 520, e => c.push(e)); if (c.length) { const e = c[Math.random() * c.length | 0]; fx('z', e.x | 0, e.y | 0, 60); inR(e.x, e.y, 60, o => hit(o, 40 * lv, p, 'ult', 'storm')); } }
@@ -369,6 +380,8 @@ const Sim = (() => {
       if (hasBoon(p, 'kindred')) { let m = 0; for (const q of G.players) if (q !== p && !q.down && (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < 260 * 260) m++; p.kin = 1 + 0.08 * m; }
       if (hasBoon(p, 'berserk')) p.kin *= 1 + (1 - p.hp / p.st.maxhp) * 0.8;
       if (p.ultT > 0) ultTick(p);
+      if (p.rigT > 0) p.rigT -= DT;
+      if (p.beaconT > 0) { p.beaconT -= DT; p.kin *= 1.25; }
       if (p.dashT > 0) { p.dashT -= DT; zone(ZONE.fire, p.x, p.y, 34 * p.st.area, 2.5 * p.st.dur, (10 + 2 * G.level) * p.st.dmg, p, 'darts'); }
       weapons(p);
       const pr = p.st.pickup * p.st.pickup;
@@ -552,6 +565,7 @@ const Sim = (() => {
       } else if (z.k === ZONE.sprout) {
         const e = near(z.x, z.y, 420);
         if (e) shot(z.p, z.w, SHOT.seed, Math.atan2(e.y - z.y, e.x - z.x), 480, z.dmg, { x: z.x, y: z.y, pierce: z.evo ? 3 : 0, life: 1, r: 7 });
+      } else if (z.k === ZONE.beacon) { for (const q of G.players) if (!q.down && (q.x - z.x) ** 2 + (q.y - z.y) ** 2 < z.r * z.r) q.beaconT = 0.6;
       } else if (z.k === ZONE.heal) { for (const p of G.players) if (!p.down && (p.x - z.x) ** 2 + (p.y - z.y) ** 2 < z.r * z.r) p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.035); }
       else inR(z.x, z.y, z.r, e => { if (z.slow) e.slow = 0.8; hit(e, z.dmg, z.p, z.wid, z.el); });
     }
@@ -594,7 +608,7 @@ const Sim = (() => {
   function applyCard(p, c) {
     if (c.k === 'w') { const w = p.weapons.find(w => w.id === c.id); if (w) w.lvl = Math.min(5, w.lvl + 1); else addWeapon(p, c.id); }
     else if (c.k === 'c') { const o = p.charms.find(x => x.id === c.id); if (o) o.lvl = Math.min(5, o.lvl + 1); else p.charms.push({ id: c.id, lvl: 1 }); }
-    else if (c.k === 'evo') { const w = p.weapons.find(w => w.id === c.id); if (w && !w.evo) { w.evo = true; G.evos++; } }
+    else if (c.k === 'evo') { const w = p.weapons.find(w => w.id === c.id); if (w && !w.evo) { w.evo = true; G.evos++; fx('r', p.x | 0, p.y | 0, 320, '#ffd27a'); fx('x', p.x | 0, p.y | 0, 160, '#ffd27a'); G.ev.push(['t', p.x | 0, p.y - 50 | 0, 'EVOLVED: ' + WEAPONS[w.id].evo, '#ffd27a']); } }
     else if (c.k === 'boon') p.boons.push(c.id);
     else if (c.k === 'asc') p.asc[c.id] = (p.asc[c.id] || 0) + 1;
     else if (c.k === 'heal') p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.3);
