@@ -17,7 +17,7 @@ const WEAPONS = {
   chain:  { name: 'Chain Spark',  el: 'storm', charm: 'quick',  evo: 'Thunderhead',    desc: 'Lightning that jumps from enemy to enemy. Shocks.', evoDesc: 'Jumps many more times and hits harder.' },
   cloud:  { name: 'Storm Cloud',  el: 'storm', charm: 'wick',   evo: 'Tempest',        desc: 'Lightning strikes random enemies nearby. Shocks.', evoDesc: 'Triple strikes with much bigger blasts.' },
   thorns: { name: 'Thorn Seeds',  el: 'bloom', charm: 'heart',  evo: 'Briar Kingdom',  desc: 'Grows thorn patches under enemies. Rots.', evoDesc: 'Huge patches that also slow enemies.' },
-  moths:  { name: 'Spore Moths',  el: 'bloom', charm: 'magnet', evo: 'Mothstorm',      desc: 'Moths orbit you and hit what they touch. Rots.', evoDesc: 'Many more moths in a wider, faster ring.' },
+  moths:  { name: 'Spore Cloud',  el: 'bloom', charm: 'magnet', evo: 'Miasma',         desc: 'A cloud of spores hangs around you and eats at anything inside. Rots.', evoDesc: 'A much wider cloud that also slows enemies.' },
   sickle: { name: 'Moon Sickle',  el: 'light', charm: 'might',  evo: 'Eclipse Blades', desc: 'A blade flies out through enemies and returns.', evoDesc: 'Three bigger blades at once.' },
   beam:   { name: 'Lantern Beam', el: 'light', charm: 'coat',   evo: 'Lighthouse',     desc: 'A sweeping beam of light. Crits often.', evoDesc: 'Two long beams sweeping together.' },
   meteor: { name: 'Falling Star', el: 'ember', charm: 'bell',   evo: 'Starfall',       desc: 'A meteor crashes into a crowd and leaves fire. Burns.', evoDesc: 'Three meteors at a time.', goal: 'evo1' },
@@ -93,8 +93,8 @@ const CHARS = {
   bryn:     { name: 'Bryn',     title: 'the gardener',     c: '#8be06a', weapon: 'thorns', passive: 'Heals over time, +20 health',
               skill: 'Bloom Circle', ult: 'Verdant Tide', ultDesc: 'Revive and heal everyone, and grow a huge thorn field.', skillDesc: 'A healing ring for everyone inside it.', cd: 14,
               f: s => { s.regen += 1.2; s.maxhp += 20; }, goal: 'shrine2' },
-  oda:      { name: 'Oda',      title: 'the moth-keeper',  c: '#d0a8ff', weapon: 'moths',  passive: '+1 projectile on everything',
-              skill: 'Swarm Call', skillDesc: 'Moths burst outward, heaping Rot on everything near you.', cd: 8, ult: 'Chrysalis', ultDesc: 'Four seconds untouchable, then a huge burst of Rot.',
+  oda:      { name: 'Oda',      title: 'the moth-keeper',  c: '#d0a8ff', weapon: 'moths',  passive: '+1 projectile on everything (and a wider Spore Cloud)',
+              skill: 'Swarm Call', skillDesc: 'Spores burst outward, heaping Rot on everything near you.', cd: 8, ult: 'Chrysalis', ultDesc: 'Four seconds untouchable, then a huge burst of Rot.',
               f: s => { s.proj += 1; }, goal: 'evo3' },
   sable:    { name: 'Sable',    title: 'the lamplighter',  c: '#fff2b0', weapon: 'beam',   passive: '+10% crit chance',
               skill: 'Beacon', skillDesc: 'Plant a light. Everyone standing in it deals 25% more damage.', cd: 12, ult: 'Sunburst', ultDesc: 'Three waves of light across the whole screen.',
@@ -122,6 +122,7 @@ const ENEMIES = [
   { id: 'ram',     hp: 60,   spd: 70,  dmg: 16, r: 14, xp: 4,  c: '#a85a3f' },   // winds up, then charges
   { id: 'wisp',    hp: 14,   spd: 150, dmg: 20, r: 9,  xp: 2,  c: '#ff9a3c' },   // rushes in and explodes
   { id: 'warden',  hp: 5000, spd: 60,  dmg: 24, r: 38, xp: 60, c: '#8a4fd0', big: true, chest: true }, // mini-boss
+  { id: 'goose',   hp: 300,  spd: 170, dmg: 0,  r: 14, xp: 0,  c: '#ffd700' },   // the Golden Goose: runs away, pays out if caught
 ];
 
 const MAPS = {

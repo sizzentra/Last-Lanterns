@@ -3,7 +3,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const SAVE_KEY = 'lastlanterns.save.v1';
-  const blank = () => ({ name: '', embers: 0, xp: 0, hearth: {}, keeper: {}, mastery: {}, goals: {}, char: 'wick', map: 'fields', runs: 0, wins: 0, heir: [], equip: [], glimmer: 0, talents: {}, maxDiff: 0, diff: 0, curses: [] });
+  const blank = () => ({ name: '', embers: 0, xp: 0, hearth: {}, keeper: {}, mastery: {}, goals: {}, char: 'wick', map: 'fields', runs: 0, wins: 0, chaos: true, heir: [], equip: [], glimmer: 0, talents: {}, maxDiff: 0, diff: 0, curses: [] });
   let save = blank();
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(blank(), s); } catch (e) { /* no save yet */ }
   const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* storage blocked */ } };
@@ -15,7 +15,7 @@
   addEventListener('pointerdown', () => Sfx.init()); addEventListener('keydown', () => Sfx.init());
   $('mute').onclick = muteBtn; $('mute').textContent = Sfx.muted ? 'Sound: off (M)' : 'Sound: on (M)';
   let picked = true, curCards = null, skLatch = false, dashT = 0, lastFrame = 0;
-  const keys = {};
+  const keys = {}; let lastInput = performance.now();
   const bossTime = +(new URLSearchParams(location.search).get('boss')) || 0;
 
   const unlocked = c => !CHARS[c].goal || save.goals[CHARS[c].goal];
@@ -26,6 +26,7 @@
 
   // ---------- camp screen ----------
   function renderCamp() {
+    $('tagline').textContent = QUIPS.pick(QUIPS.camp);
     if (!unlocked(save.char)) save.char = 'wick';
     const r = Account.rank(save.xp);
     $('name').value = save.name;
@@ -64,12 +65,13 @@
     save.diff = Math.max(0, Math.min(save.diff, save.maxDiff)); const D = diffOf(save.diff), rank = Account.rank(save.xp).lvl;
     $('diff').innerHTML = `<div class="row" style="margin-top:10px"><button data-d="-1" ${save.diff <= 0 ? 'disabled' : ''}>&#9664;</button><div style="flex:1;text-align:center"><b>${D.name}</b><br><small>enemy health x${D.hp.toFixed(1)}, damage x${D.dmg.toFixed(1)}</small></div><button data-d="1" ${save.diff >= save.maxDiff ? 'disabled' : ''}>&#9654;</button></div>
       <small>${save.diff >= save.maxDiff ? 'Win on ' + D.name + ' to unlock ' + diffOf(save.maxDiff + 1).name + '.' : ''}</small>` +
+      `<label style="display:block;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" data-chaos ${save.chaos !== false ? 'checked' : ''}> <b>Chaos mode</b> <small>Random events about once a minute. Some help. Some do not. All of them are stupid.</small></label>` +
       (rank >= 3 ? `<div class="curses">${Object.keys(CURSES).map(c => `<label title="${CURSES[c].desc}"><input type="checkbox" data-cz="${c}" ${save.curses.indexOf(c) >= 0 ? 'checked' : ''}> ${CURSES[c].name} <small>${CURSES[c].desc} (+${Math.round(CURSES[c].rew * 100)}%)</small></label>`).join('')}</div>` : '<br><small>Curses (optional challenges for more rewards) unlock at Keeper Rank 3.</small>') +
       `<label style="display:block;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" data-endless ${save.endless ? 'checked' : ''}> <b>Endless night</b> <small>After the boss falls the night keeps going and gets wilder, with a stronger boss every 4 minutes. Press Esc to end it and keep your rewards.</small></label>` +
       `<div class="embers" style="margin-top:6px">Rewards x${rewardMult(save.diff, save.curses).toFixed(2)}</div>`;
   }
   $('diff').onclick = e => { const d = e.target.dataset; if (d.d) { save.diff += +d.d; persist(); renderDiff(); } };
-  $('diff').onchange = e => { if (e.target.dataset.endless != null) { save.endless = e.target.checked; persist(); return; } const c = e.target.dataset.cz; if (!c) return; save.curses = save.curses.filter(x => x !== c); if (e.target.checked) save.curses.push(c); persist(); renderDiff(); };
+  $('diff').onchange = e => { if (e.target.dataset.endless != null) { save.endless = e.target.checked; persist(); return; } if (e.target.dataset.chaos != null) { save.chaos = e.target.checked; persist(); return; } const c = e.target.dataset.cz; if (!c) return; save.curses = save.curses.filter(x => x !== c); if (e.target.checked) save.curses.push(c); persist(); renderDiff(); };
   $('maps').onclick = e => { const b = e.target.closest('[data-map]'); if (!b || b.disabled) return; save.map = b.dataset.map; persist(); renderParty(); };
   $('name').oninput =e => { save.name = e.target.value; persist(); announce(); };
   $('chars').onclick = e => { const el = e.target.closest('.char'); if (!el || el.classList.contains('locked')) return; save.char = el.dataset.c; persist(); renderCamp(); announce(); };
@@ -124,7 +126,7 @@
   $('start').onclick = () => {
     if (role === 'client') return;
     if (role === 'solo') { myId = 0; party = [me()]; } else { Object.assign(party.find(p => p.id === myId), me()); }
-    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map, diff: Math.min(save.diff, save.maxDiff), curses: save.curses, endless: !!save.endless });
+    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map, diff: Math.min(save.diff, save.maxDiff), curses: save.curses, endless: !!save.endless, chaos: save.chaos !== false });
     tick = 0; netEv = [];
     Net.broadcast({ t: 'go' });
     enterGame();
@@ -159,14 +161,30 @@
   setInterval(() => { if (inGame && role === 'client' && View.cur) Net.toHost(localInput()); }, 50);
 
   function onSnap(s) {
-    $('pauseBox').classList.toggle('hidden', !s.hd || !inGame); $('pauseMsg').textContent = role === 'client' ? 'The host paused the night.' : 'Take a breath.'; $('resumeBtn').classList.toggle('hidden', role === 'client'); $('endNightBtn').classList.toggle('hidden', role === 'client');
+    if (s.hd && !snd.wasHd) { snd.pauseLine = QUIPS.pick(QUIPS.pause); Sfx.play('scratch'); } snd.wasHd = !!s.hd;
+    $('pauseBox').classList.toggle('hidden', !s.hd || !inGame); $('pauseMsg').textContent = role === 'client' ? 'The host paused the night. ' + snd.pauseLine : snd.pauseLine; $('resumeBtn').classList.toggle('hidden', role === 'client'); $('endNightBtn').classList.toggle('hidden', role === 'client');
     View.apply(s, myId);
     const me2 = View.cur.P.get(myId);
     if (s.lv > snd.lv) { snd.lv = s.lv; Sfx.play('level'); View.flash = 1; }
     if (s.bo && !snd.boss) { snd.boss = true; Sfx.play('boss'); Sfx.music(false); setTimeout(() => { if (inGame) Sfx.music(true, true); }, 900); }
     if (!!s.sh !== snd.sh) { if (snd.sh && !s.sh) Sfx.play('shrine'); snd.sh = !!s.sh; }
-    if (me2) { if (me2.hp < snd.hp - 0.5 && !(me2.fl & 1)) Sfx.play('hurt'); snd.hp = me2.hp; const dn = !!(me2.fl & 1); if (dn && !snd.down) Sfx.play('down'); snd.down = dn; }
-    for (const e of s.ev) { const k = e[0]; if (k === 'k') Sfx.play('kill'); else if (k === 'g-') { if (e[2] === myId) Sfx.play('gem'); } else if (k === 'x') { if (e[3] >= 80) Sfx.play('boom'); } else if (k === 'z' || k === 'b') Sfx.play('zap'); else if (k === 't' && String(e[3]).indexOf('EVOLVED') === 0) Sfx.play('evo'); }
+    const nowT = performance.now();
+    if (me2) {
+      if (me2.hp < snd.hp - 0.5 && !(me2.fl & 1)) { const mb = View.builds.find(x => x.id === myId); Sfx.play(mb && mb.b.indexOf('duck') >= 0 ? 'squeak' : 'bonk'); }
+      snd.hp = me2.hp; const dn = !!(me2.fl & 1); if (dn && !snd.down) setTimeout(() => Sfx.say(['Bruh.', 'Oof.', 'Big oof.', 'Welp.', 'Skill issue.', 'Emotional damage.'][Math.random() * 6 | 0], 0.5, true), 900); snd.down = dn;
+      if (!dn && me2.hp / me2.max < 0.25 && nowT - (snd.low || 0) > 20000) { snd.low = nowT; Sfx.say(QUIPS.pick(QUIPS.lowHp)); Sfx.play('error'); }
+      if (!dn && !s.pz && !s.hd && nowT - lastInput > 12000 && nowT - (snd.afk || 0) > 30000) { snd.afk = nowT; Sfx.say(QUIPS.pick(QUIPS.afk)); }
+    }
+    for (const e of s.ev) { const k = e[0];
+      if (k === 'k') Sfx.play(Math.random() < 0.04 ? 'quack' : Math.random() < 0.3 ? 'pop' : 'kill');
+      else if (k === 'g-') { if (e[2] === myId) Sfx.play('gem'); }
+      else if (k === 'x') { if (e[3] >= 80) Sfx.play('boom'); }
+      else if (k === 'z' || k === 'b') Sfx.play('zap');
+      else if (k === 'A') { View.banner = { a: e[1], b: e[2], t: nowT }; Sfx.play(e[3]); if (String(e[1]).indexOf('EVOLVED') === 0) Sfx.play('evo'); Sfx.say(e[1] + '. ' + e[2], 0, true); }
+      else if (k === 'V') { View.sub = { a: e[1], t: nowT }; Sfx.say(e[1]); }
+      else if (k === 'S') Sfx.play(e[1]);
+      else if (k === 'W') { View.fx.push({ e: ['t', e[1], e[2], e[3], e[4]], t: nowT }); Sfx.say(e[3], 1.9); }
+    }
     if (!s.pz && !$('cards').classList.contains('hidden')) $('cards').classList.add('hidden');
     else if (s.pz && curCards && !picked) $('cardsSub').textContent = `Press 1, 2 or 3, or click. Auto-picks in ${s.pz}s.`;
   }
@@ -233,7 +251,7 @@
   function reroll() { if (picked || !curCards || curRr <= 0) return; curRr = 0; if (role === 'client') Net.toHost({ t: 'rr' }); else Sim.redeal(myId); }
   function pickCard(i) {
     if (picked || !curCards || i >= curCards.length) return;
-    picked = true; Sfx.play('pick'); $('cardList').innerHTML = ''; $('cardsTitle').textContent = 'Waiting for the others...'; $('cardsSub').textContent = '';
+    picked = true; Sfx.play('ding'); $('cardList').innerHTML = ''; $('cardsTitle').textContent = 'Waiting for the others...'; $('cardsSub').textContent = '';
     if (role === 'client') Net.toHost({ t: 'p', i }); else Sim.pick(myId, i);
   }
   $('cardList').onclick = e => {
@@ -245,7 +263,7 @@
 
   // ---------- end of a night: pay out lasting progress ----------
   function onEnd(R) {
-    if (!inGame) return; inGame = false; $('pauseBox').classList.add('hidden'); showStats(false); Sfx.music(false); Sfx.play(R.win ? 'win' : 'lose'); $('mute').classList.add('hidden');
+    if (!inGame) return; inGame = false; $('pauseBox').classList.add('hidden'); showStats(false); Sfx.music(false); Sfx.play(R.win ? 'win' : 'trombone'); if (R.win) Sfx.play('yay'); const epitaph = QUIPS.pick(R.win ? QUIPS.epitaphWin : QUIPS.epitaphLose); setTimeout(() => Sfx.say(epitaph, 0.7, true), 1200); $('mute').classList.add('hidden');
     const mine = R.per[myId] || { kills: 0, dmgBy: {}, char: save.char }, gains = [];
     const rank0 = Account.rank(save.xp).lvl, k0 = Account.keeper(save.keeper[mine.char] || 0).lvl;
     const xp = Math.floor((R.time + R.kills * 0.2 + (R.win ? 300 : 0)) * R.mult);
@@ -266,6 +284,7 @@
     save.embers += embers; persist();
     const t = `${Math.floor(R.time / 60)}:${String(R.time % 60).padStart(2, '0')}`;
     $('endBody').innerHTML = `<h1 style="font-size:34px">${R.win ? 'Dawn breaks!' : 'The lights went out'}</h1>
+      <p class="sub" style="font-size:17px;color:#ffd27a"><i>${epitaph}</i></p>
       <p class="sub">${R.win ? (MAPS[R.map] || MAPS.fields).boss + ' is defeated.' : 'The Gloom took this one. Everything below is yours to keep.'}</p>
       ${R.bossKills > 1 ? `<p><b>Endless night: ${R.bossKills} bosses defeated.</b></p>` : ''}<p>Survived <b>${t}</b> &middot; Team level <b>${R.level}</b> &middot; <b>${R.kills}</b> defeated (you: ${mine.kills}) &middot; <b>${R.reactions}</b> reactions &middot; <b>${R.evos}</b> evolutions</p>
       ${teamTable(R)}
@@ -363,6 +382,7 @@
   const KEYMAP = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
   addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
+    lastInput = performance.now();
     if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; if (inGame) e.preventDefault(); }
     if (!inGame) return;
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3' || e.code === 'Digit4') pickCard(+e.code.slice(5) - 1);

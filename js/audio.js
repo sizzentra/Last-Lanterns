@@ -24,7 +24,7 @@ const Sfx = (() => {
     const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
     s.buffer = b; f.type = 'lowpass'; f.frequency.value = cut; g.gain.value = gain; s.connect(f); f.connect(g); g.connect(master); s.start();
   }
-  const GAP = { kill: 55, gem: 45, boom: 110, zap: 80, hurt: 220 };
+  const GAP = { kill: 55, gem: 45, boom: 140, zap: 80, hurt: 220, bonk: 200, quack: 300, pop: 60, squeak: 200, bong: 600, airhorn: 900, cash: 150 };
   const SOUNDS = {
     kill: () => tone(170 + Math.random() * 90, 0.06, 'triangle', 0.05, 0.5),
     gem: () => tone(880 + Math.random() * 260, 0.05, 'sine', 0.035),
@@ -41,7 +41,35 @@ const Sfx = (() => {
     win: () => [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => tone(f, 0.35, 'triangle', 0.11, 0, i * 0.13)),
     lose: () => [330, 294, 247, 196, 147].forEach((f, i) => tone(f, 0.5, 'sine', 0.13, 0, i * 0.22)),
     shrine: () => [659, 880, 1318].forEach((f, i) => tone(f, 0.5, 'sine', 0.09, 0, i * 0.1)),
+    // --- the silly ones ---
+    bong: () => { [1, 2.76, 5.4, 8.93].forEach((m, i) => tone(196 * m, 2.6 - i * 0.5, 'sine', 0.22 / (i + 1))); tone(98, 2.2, 'sine', 0.16); },            // a big, smug bell
+    ding: () => { tone(1568, 0.5, 'sine', 0.13); tone(2093, 0.7, 'sine', 0.1, 0, 0.09); },                                                                 // correct answer!
+    bonk: () => { tone(520, 0.09, 'triangle', 0.26, 0.45); tone(1900, 0.03, 'square', 0.07); },                                                              // head, meet object
+    thud: () => { tone(72, 1.1, 'sine', 0.5, 0.45); noise(0.5, 0.2, 240); },                                                                                // deep dramatic thud
+    boom3: () => { [0, 0.42, 0.84].forEach(d => { tone(72, 1.0, 'sine', 0.45, 0.45, d); tone(144, 0.4, 'triangle', 0.12, 0.5, d); }); },                    // dun. dun. DUN.
+    airhorn: () => { [0, 0.16, 0.32, 0.5].forEach((d, i) => [466, 470, 587, 592].forEach(f => tone(f, i === 3 ? 0.7 : 0.13, 'sawtooth', 0.07, 0.97, d))); },
+    trombone: () => [[311, 0], [293, 0.38], [277, 0.76], [233, 1.14]].forEach(([f, d], i) => tone(f, i === 3 ? 1.1 : 0.34, 'sawtooth', 0.11, i === 3 ? 0.72 : 0.96, d)), // wah wah wah waaah
+    whistle: () => tone(1700, 0.75, 'sine', 0.14, 0.18),                                                                                                    // falling slide whistle
+    whistleUp: () => tone(420, 0.5, 'sine', 0.13, 4.2),
+    honk: () => { tone(310, 0.16, 'square', 0.1, 0.9); tone(233, 0.26, 'square', 0.1, 0.9, 0.17); },
+    quack: () => { tone(760, 0.11, 'sawtooth', 0.09, 0.55); tone(640, 0.1, 'square', 0.05, 0.6, 0.02); },
+    cash: () => { noise(0.05, 0.1, 6000); tone(1318, 0.12, 'square', 0.07, 0, 0.04); tone(1976, 0.4, 'square', 0.07, 0, 0.13); },                         // cha-ching
+    boing: () => { const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain(); o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(520, t + 0.5); l.frequency.value = 17; lg.gain.value = 70; l.connect(lg); lg.connect(o.frequency); g.gain.setValueAtTime(0.16, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55); o.connect(g); g.connect(master); o.start(t); l.start(t); o.stop(t + 0.6); l.stop(t + 0.6); },
+    scratch: () => { noise(0.22, 0.2, 3200); tone(900, 0.2, 'sawtooth', 0.09, 0.1); },                                                                     // record scratch
+    sting: () => [[196, 0], [185, 0.2], [147, 0.4]].forEach(([f, d]) => { tone(f, 0.55, 'sawtooth', 0.1, 0, d); tone(f / 2, 0.55, 'square', 0.07, 0, d); }),
+    yay: () => [523, 659, 784, 1046, 1318, 1568].forEach((f, i) => tone(f, 0.12, 'square', 0.06, 0, i * 0.05)),
+    squeak: () => { tone(1250, 0.07, 'sine', 0.14, 1.7); tone(2100, 0.09, 'sine', 0.11, 0.6, 0.07); },                                                      // rubber duck
+    pop: () => tone(430, 0.05, 'sine', 0.13, 3.2),
+    raspberry: () => { const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(58, t + 0.5); l.type = 'square'; l.frequency.value = 31; lg.gain.value = 0.11; g.gain.value = 0.11; l.connect(lg); lg.connect(g.gain); g.gain.setValueAtTime(0.11, t); g.gain.linearRampToValueAtTime(0.0001, t + 0.55); o.connect(g); g.connect(master); o.start(t); l.start(t); o.stop(t + 0.56); l.stop(t + 0.56); },
+    error: () => { tone(392, 0.14, 'square', 0.09); tone(294, 0.3, 'square', 0.09, 0, 0.15); },
   };
+  // the announcer: the browser's own text-to-speech voice
+  let lastSay = 0;
+  function say(text, pitch, force) {
+    if (muted || !window.speechSynthesis || !text) return;
+    const now = performance.now(); if (!force && now - lastSay < 3500) return; lastSay = now;
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.pitch = pitch || 0.6 + Math.random() * 0.7; u.rate = 1.08; u.volume = 0.9; speechSynthesis.speak(u); } catch (e) { /* no voice available */ }
+  }
   function play(name) {
     if (!ac || muted || !SOUNDS[name]) return;
     const now = performance.now(); if (now - (last[name] || 0) < (GAP[name] || 0)) return; last[name] = now;
@@ -61,6 +89,6 @@ const Sfx = (() => {
     }
   }
   function music(on, boss) { intense = !!boss; if (!ac || on === playing) return; playing = on; mus.gain.linearRampToValueAtTime(on ? 0.9 : 0, ac.currentTime + 0.8); }
-  function toggle() { muted = !muted; try { localStorage.setItem('lastlanterns.muted', muted ? '1' : '0'); } catch (e) { /* ignore */ } if (master) master.gain.value = muted ? 0 : 0.8; return muted; }
-  return { init, play, music, toggle, get muted() { return muted; } };
+  function toggle() { muted = !muted; try { localStorage.setItem('lastlanterns.muted', muted ? '1' : '0'); } catch (e) { /* ignore */ } if (master) master.gain.value = muted ? 0 : 0.8; if (muted && window.speechSynthesis) speechSynthesis.cancel(); return muted; }
+  return { init, play, say, music, toggle, get muted() { return muted; } };
 })();

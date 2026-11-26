@@ -61,12 +61,12 @@ const Render = (() => {
     ctx.strokeStyle = '#3a2f66'; ctx.lineWidth = 6; ctx.strokeRect(-Sim.WORLD, -Sim.WORLD, Sim.WORLD * 2, Sim.WORLD * 2);
 
     // zones
-    const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0', '#7fd8ff', 0, 0, '#ffe9a0'];
+    const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0', '#7fd8ff', 0, 0, '#ffe9a0', '#8be06a'];
     // your own damaging effects are drawn at full strength, teammates' much fainter, so you can read the fight
-    for (const mine of [false, true]) for (const k of [0, 1, 2, 3, 6]) {
+    for (const mine of [false, true]) for (const k of [0, 1, 2, 3, 6, 7]) {
       const team = k === 2 || k === 6; // healing rings and beacons matter to everyone
       if (team && !mine) continue;
-      ctx.fillStyle = zc[k]; ctx.globalAlpha = (k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : k === 3 ? 0.1 : 0.2) * (mine ? 1 : 0.4); ctx.beginPath();
+      ctx.fillStyle = zc[k]; ctx.globalAlpha = (k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : k === 3 || k === 7 ? 0.13 : 0.2) * (mine ? 1 : 0.4); ctx.beginPath();
       for (let i = 0; i < Z.length; i += 5) if (Z[i] === k && (team || (Z[i + 4] === myId) === mine) && vis(Z[i + 1], Z[i + 2])) circ(Z[i + 1], Z[i + 2], Z[i + 3]);
       ctx.fill();
     }
@@ -137,9 +137,10 @@ const Render = (() => {
     for (let t = 0; t < ENEMIES.length; t++) {
       const L = byT[t], T = ENEMIES[t]; if (!L.length) continue;
       if (T.big) for (let i = 0; i < L.length; i += 3) gl(t === 5 ? '#b9a8ff' : t === 11 ? '#b070ff' : '#ff5a4a', L[i + 1], L[i + 2], T.r * 2.6);
-      ctx.fillStyle = T.c; ctx.beginPath(); for (let i = 0; i < L.length; i += 3) circ(L[i + 1], L[i + 2], T.r); ctx.fill();
+      const SZ = e => e.st & 128 ? 1.7 : e.st & 256 ? 0.6 : 1;
+      ctx.fillStyle = T.c; ctx.beginPath(); for (let i = 0; i < L.length; i += 3) circ(L[i + 1], L[i + 2], T.r * SZ(L[i])); ctx.fill();
       ctx.fillStyle = t === 5 ? '#200030' : '#ffdf8a'; ctx.beginPath();
-      for (let i = 0; i < L.length; i += 3) { const q = T.r * 0.38; circ(L[i + 1] - q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); circ(L[i + 1] + q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); }
+      for (let i = 0; i < L.length; i += 3) { const q = T.r * 0.38 * SZ(L[i]); circ(L[i + 1] - q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); circ(L[i + 1] + q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); }
       ctx.fill();
       ctx.lineWidth = 2.5;
       for (let i = 0; i < L.length; i += 3) {
@@ -218,6 +219,22 @@ const Render = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.72)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    if (s.fz & 1) { ctx.fillStyle = 'hsla(' + ((now / 6) % 360) + ',100%,55%,0.13)'; ctx.fillRect(0, 0, W, H); } // Disco Inferno
+    if (V.banner && now - V.banner.t < 4200) { // big announcements slam in, then fade
+      const age = (now - V.banner.t) / 4200, pop = Math.min(1, age * 14), y = H * 0.24;
+      ctx.globalAlpha = age > 0.8 ? (1 - age) * 5 : 1; ctx.textAlign = 'center';
+      ctx.save(); ctx.translate(W / 2, y); ctx.rotate((1 - pop) * -0.12 + Math.sin(now / 90) * 0.012); ctx.scale(0.5 + pop * 0.5 + Math.sin(now / 110) * 0.02, 0.5 + pop * 0.5);
+      ctx.font = '900 ' + Math.min(64, W / 13) + 'px system-ui'; ctx.lineWidth = 8; ctx.strokeStyle = '#1a0f2a'; ctx.strokeText(V.banner.a.toUpperCase(), 0, 0);
+      ctx.fillStyle = 'hsl(' + ((now / 8) % 360) + ',100%,68%)'; ctx.fillText(V.banner.a.toUpperCase(), 0, 0);
+      ctx.restore();
+      ctx.font = 'bold 20px system-ui'; ctx.lineWidth = 5; ctx.strokeStyle = '#1a0f2a'; ctx.strokeText(V.banner.b, W / 2, y + 40); ctx.fillStyle = '#fff'; ctx.fillText(V.banner.b, W / 2, y + 40);
+      ctx.globalAlpha = 1;
+    }
+    if (V.sub && now - V.sub.t < 4500) { // what the announcer just said
+      ctx.globalAlpha = Math.min(1, (4500 - (now - V.sub.t)) / 600); ctx.textAlign = 'center'; ctx.font = 'italic 17px system-ui';
+      const w = ctx.measureText(V.sub.a).width + 28; ctx.fillStyle = 'rgba(10,8,22,0.7)'; ctx.fillRect(W / 2 - w / 2, H - 128, w, 30);
+      ctx.fillStyle = '#ffe9a0'; ctx.fillText('"' + V.sub.a + '"', W / 2, H - 107); ctx.globalAlpha = 1;
+    }
     if (V.flash > 0.02) { ctx.fillStyle = 'rgba(255,225,160,' + (V.flash * 0.35) + ')'; ctx.fillRect(0, 0, W, H); V.flash *= 0.9; }
     ctx.fillStyle = '#1a1730'; ctx.fillRect(0, 0, W, 14); ctx.fillStyle = '#ffd27a'; ctx.fillRect(0, 0, W * Math.min(1, s.xp / s.xn), 14);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 22px system-ui';
