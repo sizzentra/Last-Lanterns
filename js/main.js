@@ -327,7 +327,7 @@
         <li>Collect the sparks enemies drop. The whole team shares one level bar; on a level-up everyone picks one card (keys <b>1 2 3</b>).</li>
         <li>Weapons leave marks: <b style="color:#ff8a3c">Burn</b>, <b style="color:#7fd8ff">Chill</b>, <b style="color:#ffe45c">Shock</b>, <b style="color:#8be06a">Rot</b>. Two different marks on one enemy cause a <b>reaction</b>. Your friends' marks count too.</li>
         <li>Two or more weapons of the same element make that element stronger.</li>
-        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li><b>Esc</b> pauses (the host pauses for everyone) and lets you end the night early with your rewards.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
+        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li>The <b>minimap</b> (bottom left) shows landmarks worth walking to: orange <b>Ember Caches</b> (Embers and XP), green <b>Healing Wells</b>, and the pale <b>Old Bell</b>, which stuns every enemy around it. Rocks block you and the enemies. A yellow <b>Firefly Cart</b> sometimes asks for an escort: it only moves while someone walks beside it, and pays a Boon when it arrives.</li><li><b>Esc</b> pauses (the host pauses for everyone) and lets you end the night early with your rewards.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
         <li>Stand in a glowing <b>shrine</b> circle to earn a Boon. Defeat red <b>elites</b> for a chest.</li>
         <li>If a friend goes down, stand in their circle to revive them. If everyone is down, the night ends.</li>
         <li>Watch for red flashing rings (an enemy about to charge or explode), blue rings (a Warder is shielding that enemy: kill the Warder first) and purple Dark Bargain circles (optional: a harder 45 seconds for a big reward).</li><li>Survive 12 minutes, then defeat the boss. Win or lose, you keep Embers and experience.</li></ul>`;
@@ -396,7 +396,7 @@
         const b = View.builds.find(x => x.id === myId), spd = b ? b.spd : 190;
         if (dashT > 0) { dashT -= dt; m.x += m.fx * spd * 4.2 * dt; m.y += m.fy * spd * 4.2 * dt; }
         else if (dx || dy) { m.x += m.fx * spd * dt; m.y += m.fy * spd * dt; }
-        clampMe();
+        clampMe(); World.collide(View.world, m, 13);
       }
     }
     Render.draw(myId);

@@ -9,6 +9,7 @@ const View = {
     for (const p of s.P) c.P.set(p[0], { id: p[0], x: p[1], y: p[2], hp: p[3], max: p[4], fl: p[5], rev: p[6], sk: p[7], ul: p[8] });
     for (let i = 0; i < s.E.length; i += 6) c.E.set(s.E[i], { type: s.E[i + 1], x: s.E[i + 2], y: s.E[i + 3], hp: s.E[i + 4], st: s.E[i + 5] });
     for (let i = 0; i < s.S.length; i += 6) c.S.set(s.S[i], { k: s.S[i + 1], x: s.S[i + 2], y: s.S[i + 3], r: s.S[i + 4], o: s.S[i + 5] });
+    if (s.sd && this.seed !== s.sd) { this.seed = s.sd; this.world = World.gen(s.sd); }
     this.prev = this.cur; this.cur = c; this.gap = Math.max(20, Math.min(250, now - this.curT)); this.curT = now;
     if (!this.prev) { const m = c.P.get(myId); if (m) { this.me.x = m.x; this.me.y = m.y; } }
     for (const e of s.ev) {
@@ -77,6 +78,31 @@ const Render = (() => {
       gl(rod ? '#ffe45c' : '#8be06a', x, y, 34);
       ctx.fillStyle = rod ? '#ffe45c' : '#8be06a';
       if (rod) ctx.fillRect(x - 3, y - 24, 6, 28); else { ctx.beginPath(); circ(x, y, 9); ctx.fill(); ctx.fillStyle = '#eaffd0'; ctx.beginPath(); circ(x, y - 4, 4); ctx.fill(); }
+    }
+    // rocks
+    if (V.world) {
+      ctx.fillStyle = '#17142a'; ctx.beginPath(); for (const k of V.world.rocks) if (Math.abs(k.x - cx) < vw + k.r && Math.abs(k.y - cy) < vh + k.r) circ(k.x, k.y, k.r); ctx.fill();
+      ctx.strokeStyle = '#342e55'; ctx.lineWidth = 3; ctx.beginPath(); for (const k of V.world.rocks) if (Math.abs(k.x - cx) < vw + k.r && Math.abs(k.y - cy) < vh + k.r) circ(k.x, k.y, k.r - 2); ctx.stroke();
+      // landmarks
+      ctx.textAlign = 'center';
+      V.world.sites.forEach((t, i) => {
+        if (!vis(t.x, t.y)) return;
+        const S = World.SITES[t.k], st = s.si ? s.si[i] : 0, ready = st === 0;
+        ctx.globalAlpha = ready ? 1 : 0.35; gl(S.c, t.x, t.y, ready ? 80 + 8 * Math.sin(now / 300) : 40);
+        ctx.fillStyle = S.c; ctx.beginPath();
+        if (t.k === 0) ctx.rect(t.x - 14, t.y - 11, 28, 22); else if (t.k === 1) circ(t.x, t.y, 16); else { ctx.moveTo(t.x, t.y - 20); ctx.lineTo(t.x + 16, t.y + 12); ctx.lineTo(t.x - 16, t.y + 12); }
+        ctx.fill();
+        ctx.font = 'bold 13px system-ui'; ctx.fillText(S.name + (st < 0 ? ' (opened)' : st > 0 ? ' (' + st + 's)' : ''), t.x, t.y - 30);
+        ctx.globalAlpha = 1;
+      });
+    }
+    if (s.ca) { // Firefly Cart and where it is going
+      const [x, y, tx, ty, life] = s.ca;
+      ctx.strokeStyle = '#ffe45c55'; ctx.lineWidth = 3; ctx.setLineDash([10, 12]); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = '#ffe45c'; ctx.beginPath(); circ(tx, ty, 26); ctx.stroke();
+      gl('#ffe45c', x, y, 70); ctx.strokeStyle = '#ffe45c33'; ctx.beginPath(); circ(x, y, 180); ctx.stroke();
+      ctx.fillStyle = '#5a3d1a'; ctx.fillRect(x - 16, y - 9, 32, 18); ctx.fillStyle = '#ffe45c'; ctx.beginPath(); circ(x, y - 12, 7); ctx.fill();
+      ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.fillText('Firefly Cart: walk with it (' + life + 's)', x, y - 28);
     }
     // shrine
     if (s.sh) {
@@ -207,6 +233,18 @@ const Render = (() => {
         if (ur) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 + Math.sin(now / 120); ctx.beginPath(); circ(ux, H - 46, 25); ctx.stroke(); }
         ctx.fillStyle = ur ? '#111' : '#999'; ctx.fillText(meS.ul < 0 ? 'Lv 6' : ur ? 'Q' : meS.ul, ux, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.ult, ux, H - 10); }
       if (down) { ctx.fillStyle = '#fff'; ctx.font = 'bold 26px system-ui'; ctx.fillText('You are down. A friend can revive you.', W / 2, H / 2 - 110); }
+    }
+    if (V.world) { // minimap, bottom left
+      const M = 150, mx = 12, my = H - M - 12, sc2 = M / (Sim.WORLD * 2), px = x => mx + (x + Sim.WORLD) * sc2, py = y => my + (y + Sim.WORLD) * sc2;
+      const dot = (x, y, col, r) => { ctx.fillStyle = col; ctx.beginPath(); circ(px(x), py(y), r); ctx.fill(); };
+      ctx.fillStyle = 'rgba(10,8,22,0.72)'; ctx.fillRect(mx, my, M, M); ctx.strokeStyle = '#3a2f66'; ctx.lineWidth = 1.5; ctx.strokeRect(mx, my, M, M);
+      ctx.fillStyle = '#262240'; for (const k of V.world.rocks) ctx.fillRect(px(k.x) - 1.5, py(k.y) - 1.5, 3, 3);
+      V.world.sites.forEach((t, i) => { const st = s.si ? s.si[i] : 0; if (st >= 0) { ctx.globalAlpha = st === 0 ? 1 : 0.35; dot(t.x, t.y, World.SITES[t.k].c, 3.5); ctx.globalAlpha = 1; } });
+      if (s.sh) dot(s.sh[0], s.sh[1], '#ffd27a', 5);
+      if (s.al) dot(s.al[0], s.al[1], '#b070ff', 5);
+      if (s.ca) { dot(s.ca[0], s.ca[1], '#ffe45c', 4); ctx.strokeStyle = '#ffe45c'; ctx.beginPath(); circ(px(s.ca[2]), py(s.ca[3]), 4); ctx.stroke(); }
+      if (s.bo) for (const e of c.E.values()) if (e.type === 5) dot(e.x, e.y, '#ff4a4a', 5);
+      for (const [id, p] of c.P) { const b = V.builds.find(x => x.id === id); dot(id === myId ? V.me.x : p.x, id === myId ? V.me.y : p.y, b ? CHARS[b.char].c : '#fff', id === myId ? 4 : 3); if (id === myId) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); circ(px(V.me.x), py(V.me.y), 6); ctx.stroke(); } }
     }
     if (s.cu) { ctx.fillStyle = '#d0a8ff'; ctx.font = 'bold 18px system-ui'; ctx.fillText('Dark Bargain: survive ' + s.cu + 's', W / 2, s.bo ? 112 : 72); }
     if (s.sh) { // arrow to the shrine when it is off screen

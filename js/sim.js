@@ -18,8 +18,9 @@ const Sim = (() => {
       shrine: null, nextShrine: 70, nextElite: 110, boss: null, bossTime: opts.bossTime || 720, over: null,
       acc: 0, coins: 0, kills: 0, shrines: 0, reactions: 0, evos: 0, dirty: true, dotT: 0, txt: 0, n: defs.length,
       map: MAPS[opts.map] ? opts.map : 'fields', nextWarden: 240, nextSurge: 330, nextAltar: 170, altar: null, curse: 0, bargains: 0, wardens: 0,
-      diff: opts.diff | 0, dm: diffOf(opts.diff | 0), cz: {}, endless: !!opts.endless, bossKills: 0, won: false, hold: false };
+      diff: opts.diff | 0, dm: diffOf(opts.diff | 0), cz: {}, seed: (Math.random() * 2147483647) | 0, cart: null, nextCart: 300, carts: 0, caches: 0, endless: !!opts.endless, bossKills: 0, won: false, hold: false };
     for (const c of opts.curses || []) if (CURSES[c]) G.cz[c] = 1;
+    G.world = World.gen(G.seed); G.site = G.world.sites.map(() => ({ cd: 0, used: false }));
     defs.forEach((d, i) => {
       const a = i / defs.length * 6.283, off = defs.length > 1 ? 50 : 0;
       const p = { id: d.id, name: d.name, char: d.char, meta: d.meta || {}, x: Math.cos(a) * off, y: Math.sin(a) * off, fx: 1, fy: 0,
@@ -409,7 +410,7 @@ const Sim = (() => {
     if (!p.down) {
       const nx = Math.max(-WORLD, Math.min(WORLD, m.x)), ny = Math.max(-WORLD, Math.min(WORLD, m.y));
       if (Math.abs(nx - p.x) + Math.abs(ny - p.y) > 0.5) p.mv = true;
-      p.x = nx; p.y = ny; if (m.fx || m.fy) { p.fx = m.fx; p.fy = m.fy; }
+      p.x = nx; p.y = ny; World.collide(G.world, p, 13); if (m.fx || m.fy) { p.fx = m.fx; p.fy = m.fy; }
     }
     if (m.sk & 1) skill(p);
     if (m.sk & 2) ult(p);
@@ -466,6 +467,31 @@ const Sim = (() => {
       const s = G.shrine; let c = 0; for (const p of alive) if ((p.x - s.x) ** 2 + (p.y - s.y) ** 2 < s.r * s.r) c++;
       if (c) s.prog += DT * 0.13 * (0.6 + 0.4 * c);
       if (s.prog >= 1) { fx('r', s.x | 0, s.y | 0, 400, '#ffd27a'); inR(s.x, s.y, 400, e => hit(e, 80 * (1 + G.level * 0.2), null, 'shrine', null, 3)); G.shrine = null; G.shrines++; G.nextShrine = G.t + 110; G.pendBoon++; }
+    }
+  }
+  function landmarks() { // caches, wells, the Old Bell, and the Firefly Cart
+    const alive = G.players.filter(p => !p.down); if (!alive.length) return;
+    G.world.sites.forEach((s, i) => {
+      const st = G.site[i]; if (st.cd > 0) st.cd -= DT;
+      if (st.used || st.cd > 0) return;
+      const p = alive.find(p => (p.x - s.x) ** 2 + (p.y - s.y) ** 2 < 70 * 70); if (!p) return;
+      if (s.k === 0) { st.used = true; G.caches++; G.coins += 30; addXp(G.xpNeed * 0.6, null); fx('r', s.x | 0, s.y | 0, 200, '#ffb347'); G.ev.push(['t', s.x | 0, s.y - 40 | 0, 'Ember Cache: +30 Embers', '#ffb347']); }
+      else if (s.k === 1) { if (!G.players.some(q => q.down || q.hp < q.st.maxhp * 0.95)) return; st.cd = 120; for (const q of G.players) if (!q.down) q.hp = Math.min(q.st.maxhp, q.hp + q.st.maxhp * 0.6); fx('r', s.x | 0, s.y | 0, 260, '#6be0c0'); G.ev.push(['t', s.x | 0, s.y - 40 | 0, 'The well heals everyone', '#6be0c0']); }
+      else { st.cd = 90; fx('r', s.x | 0, s.y | 0, 900, '#fff2b0'); fx('x', s.x | 0, s.y | 0, 300, '#fff2b0'); G.ev.push(['t', s.x | 0, s.y - 40 | 0, 'The Old Bell rings!', '#fff2b0']); inR(s.x, s.y, 900, e => { e.frozen = Math.max(e.frozen, 4); hit(e, 40 * (1 + G.level * 0.2), null, 'shrine', null, 3); }); }
+    });
+    if (!G.cart && !G.boss && G.t >= G.nextCart) {
+      const p = alive[Math.random() * alive.length | 0], a = rnd(0, 6.283), b = a + rnd(1.6, 4.6), lim = v => Math.max(-WORLD + 120, Math.min(WORLD - 120, v));
+      const x = lim(p.x + Math.cos(a) * 320), y = lim(p.y + Math.sin(a) * 320);
+      G.cart = { x, y, tx: lim(x + Math.cos(b) * 1000), ty: lim(y + Math.sin(b) * 1000), life: 150 };
+      G.ev.push(['t', p.x | 0, p.y - 60 | 0, 'A Firefly Cart needs an escort', '#ffe45c']);
+    }
+    if (G.cart) {
+      const c = G.cart; let n = 0; for (const p of alive) if ((p.x - c.x) ** 2 + (p.y - c.y) ** 2 < 180 * 180) n++;
+      const dx = c.tx - c.x, dy = c.ty - c.y, d = Math.hypot(dx, dy) || 1;
+      if (n) { const sp = 60 * (0.6 + 0.4 * n) * DT; c.x += dx / d * sp; c.y += dy / d * sp; }
+      c.life -= DT;
+      if (d < 24) { G.cart = null; G.carts++; G.nextCart = G.t + 240; G.coins += 40; G.pendBoon++; fx('r', c.tx | 0, c.ty | 0, 400, '#ffe45c'); G.ev.push(['t', c.tx | 0, c.ty - 40 | 0, 'Cart delivered: choose a Boon', '#ffe45c']); }
+      else if (c.life <= 0) { G.cart = null; G.nextCart = G.t + 200; }
     }
   }
   function eshot(e, a, spd, dmg) { G.shots.push({ id: uid++, k: SHOT.spit, x: e.x, y: e.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, r: 7, dmg, enemy: true, life: 5, t: 0 }); }
@@ -534,6 +560,7 @@ const Sim = (() => {
       if (e.type === 11) { e.at -= DT; if (e.at <= 0 && e.frozen <= 0) { e.at = 3; for (let i = 0; i < 12; i++) eshot(e, i / 12 * 6.283 + G.t, 160, e.dmg * 0.5); if (Math.random() < 0.5) for (let i = 0; i < 4; i++) spawn(7, e.x + rnd(-50, 50), e.y + rnd(-50, 50)); } }
       if (e.type !== 10 && d < e.r + 13 && e.hc <= 0) { hurt(tp, e.dmg * (e.st === 'dash' ? 1.5 : 1)); e.hc = 0.7; }
     }
+    for (const e of L) if (!e.dead && e.type !== 5) World.collide(G.world, e, e.r * 0.7);
     // keep enemies from stacking on one spot
     const grid = new Map(), C = 44;
     for (const e of L) { if (e.dead) continue; const k = ((e.x / C | 0) + 500) * 2048 + (e.y / C | 0) + 500; const c = grid.get(k); if (c) c.push(e); else grid.set(k, [e]); }
@@ -646,7 +673,7 @@ const Sim = (() => {
     if (G.pause) { G.pause.t -= DT; if (G.pause.t <= 0) for (const id in G.pause.picks) pick(+id, 0); return; }
     G.t += DT; G.txt = 0; G.beams = []; G.orbs = []; G.auras = [];
     if (((G.t * 30) | 0) % 60 === 0) G.dirty = true; // refresh everyone's stats panel every 2 seconds
-    players(); spawner(); enemies(); shotsAndZones();
+    players(); spawner(); landmarks(); enemies(); shotsAndZones();
     G.enemies = G.enemies.filter(e => !e.dead);
     if (G.over) return;
     if (G.pendChest > 0) { G.pendChest--; startPause('chest'); }
@@ -655,7 +682,7 @@ const Sim = (() => {
   }
   function snap() {
     const s = { t: 's', tm: Math.round(G.t * 10) / 10, lv: G.level, xp: Math.round(G.xp), xn: Math.round(G.xpNeed), k: G.kills, pz: G.pause ? Math.ceil(G.pause.t) : 0,
-      P: [], E: [], S: [], Z: [], K: [], B: G.beams, O: G.orbs, ev: G.ev, sh: 0, bo: 0, hd: G.hold ? 1 : 0, mp: G.map, cu: G.curse > 0 ? Math.ceil(G.curse) : 0, al: G.altar ? [G.altar.x | 0, G.altar.y | 0, G.altar.r, Math.round(G.altar.prog * 100)] : 0 };
+      P: [], E: [], S: [], Z: [], K: [], B: G.beams, O: G.orbs, ev: G.ev, sh: 0, bo: 0, hd: G.hold ? 1 : 0, sd: G.seed, si: G.site.map(t => t.used ? -1 : Math.ceil(Math.max(0, t.cd))), ca: G.cart ? [G.cart.x | 0, G.cart.y | 0, G.cart.tx | 0, G.cart.ty | 0, Math.ceil(G.cart.life)] : 0, mp: G.map, cu: G.curse > 0 ? Math.ceil(G.curse) : 0, al: G.altar ? [G.altar.x | 0, G.altar.y | 0, G.altar.r, Math.round(G.altar.prog * 100)] : 0 };
     G.ev = [];
     for (const p of G.players) s.P.push([p.id, Math.round(p.x), Math.round(p.y), Math.ceil(p.hp), p.st.maxhp, (p.down ? 1 : 0) | (p.inv > 0 ? 2 : 0) | (p.dashT > 0 ? 4 : 0) | (p.ward > 0 ? 8 : 0) | (p.ultT > 0 ? 16 : 0), Math.round(p.rev * 100), p.skillT > 0 ? Math.ceil(p.skillT * 10) : 0, G.level < 6 ? -1 : Math.ceil(Math.max(0, p.ultCd))]);
     for (const e of G.enemies) s.E.push(e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(1, Math.round(e.hp / e.maxhp * 100)), (e.burn > 0 ? 1 : 0) | (e.chill > 0 ? 2 : 0) | (e.shock > 0 ? 4 : 0) | (e.rot > 0 ? 8 : 0) | (e.frozen > 0 ? 16 : 0) | (e.st === 'wind' ? 32 : 0) | (e.shT > 0 && e.type !== 8 ? 64 : 0));
@@ -673,7 +700,7 @@ const Sim = (() => {
   function results() {
     const per = {}; for (const p of G.players) per[p.id] = { kills: p.kills, reacts: p.reacts, dmgBy: p.dmgBy, char: p.char, name: p.name, evos: p.weapons.filter(w => w.evo).length };
     const mult = rewardMult(G.diff, Object.keys(G.cz));
-    return { win: !!(G.won || (G.over && G.over.win)), bossKills: G.bossKills, endless: G.endless, diff: G.diff, curses: Object.keys(G.cz), mult, time: Math.floor(G.t), level: G.level, kills: G.kills, shrines: G.shrines, boons: Math.max(0, ...G.players.map(p => p.boons.length)), reactions: G.reactions, evos: G.evos, players: G.n, map: G.map, bargains: G.bargains, wardens: G.wardens,
+    return { win: !!(G.won || (G.over && G.over.win)), bossKills: G.bossKills, endless: G.endless, carts: G.carts, caches: G.caches, diff: G.diff, curses: Object.keys(G.cz), mult, time: Math.floor(G.t), level: G.level, kills: G.kills, shrines: G.shrines, boons: Math.max(0, ...G.players.map(p => p.boons.length)), reactions: G.reactions, evos: G.evos, players: G.n, map: G.map, bargains: G.bargains, wardens: G.wardens,
       embers: Math.floor((G.t * 0.3 + G.kills * 0.05 + G.coins + (G.over && G.over.win ? 150 : 0)) * mult), per };
   }
   return { DT, WORLD, newGame, step, snap, builds, results, input, pick, redeal, removePlayer, hold: v => { if (G && !G.over) G.hold = !!v; }, endNight: () => { if (G && !G.over) { G.hold = false; G.over = { win: G.won }; } }, get G() { return G; } };

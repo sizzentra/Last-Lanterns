@@ -164,6 +164,8 @@ const GOALS = {
   boon3:   { name: 'Blessed',         desc: 'Hold 3 Boons in one run',          reward: 'Unlocks the weapon Halo', test: r => r.boons >= 3 },
   react500: { name: 'Mad Science',    desc: 'Cause 500 reactions in one run',   reward: '250 Embers and the keeper Pip', embers: 250, test: r => r.reactions >= 500 },
   lvl40:   { name: 'Godlight',        desc: 'Reach level 40 in a run',          reward: '400 Embers', embers: 400, test: r => r.level >= 40 },
+  cart:    { name: 'Safe Passage',    desc: 'Escort a Firefly Cart to its destination', reward: '150 Embers', embers: 150, test: r => r.carts >= 1 },
+  cache4:  { name: 'Treasure Hunter', desc: 'Open all 4 Ember Caches in one night',  reward: '200 Embers', embers: 200, test: r => r.caches >= 4 },
   bargain: { name: 'A Deal is a Deal', desc: 'Accept and survive a Dark Bargain',  reward: '150 Embers', embers: 150, test: r => r.bargains >= 1 },
   warden:  { name: 'Warden Breaker',  desc: 'Defeat a Gloom Warden',             reward: '150 Embers and the keeper Sable', embers: 150, test: r => r.wardens >= 1 },
   win2:    { name: 'Silence the Bell', desc: 'Defeat the Drowned Bell in the Sunken Mire', reward: '500 Embers and the keeper Gran Hollow', embers: 500, test: r => r.win && r.map === 'mire' },
