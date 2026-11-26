@@ -3,7 +3,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const SAVE_KEY = 'lastlanterns.save.v1';
-  const blank = () => ({ name: '', embers: 0, xp: 0, hearth: {}, keeper: {}, mastery: {}, goals: {}, char: 'wick', map: 'fields', runs: 0, wins: 0 });
+  const blank = () => ({ name: '', embers: 0, xp: 0, hearth: {}, keeper: {}, mastery: {}, goals: {}, char: 'wick', map: 'fields', runs: 0, wins: 0, heir: [], equip: [], glimmer: 0, talents: {}, maxDiff: 0, diff: 0, curses: [] });
   let save = blank();
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(blank(), s); } catch (e) { /* no save yet */ }
   const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* storage blocked */ } };
@@ -16,7 +16,7 @@
 
   const unlocked = c => !CHARS[c].goal || save.goals[CHARS[c].goal];
   const myName = () => (save.name || 'Keeper').slice(0, 14);
-  const myMeta = () => { const m = {}; for (const w in WEAPONS) m[w] = Account.mastery(save.mastery[w] || 0).rank; return { h: save.hearth, kl: Account.keeper(save.keeper[save.char] || 0).lvl, m, lock: Object.keys(WEAPONS).filter(w => WEAPONS[w].goal && !save.goals[WEAPONS[w].goal]) }; };
+  const myMeta = () => { const m = {}; for (const w in WEAPONS) m[w] = Account.mastery(save.mastery[w] || 0).rank; return { h: save.hearth, kl: Account.keeper(save.keeper[save.char] || 0).lvl, m, lock: Object.keys(WEAPONS).filter(w => WEAPONS[w].goal && !save.goals[WEAPONS[w].goal]), ...Meta.bonus(save, save.char) }; };
   const me = () => ({ id: myId, name: myName(), char: save.char, meta: myMeta() });
   const say = t => { $('msg').textContent = t || ''; };
 
@@ -46,7 +46,7 @@
         party.map(p => `<div><span><b style="color:${CHARS[p.char].c}">&#9679;</b> ${esc(p.name)}${p.id === myId ? ' (you)' : ''}</span><span>${CHARS[p.char].name}</span></div>`).join('') +
         `</div><div class="row" style="margin-top:8px"><button id="leaveBtn">Leave room</button></div>`;
     }
-    $('party').innerHTML = h;
+    $('party').innerHTML = h; renderDiff();
     if (!MAPS[save.map] || (MAPS[save.map].goal && !save.goals[MAPS[save.map].goal])) save.map = 'fields';
     $('maps').innerHTML = role === 'client' ? '<small>The host chooses the map.</small>' : Object.keys(MAPS).map(m => { const M = MAPS[m], ok = !M.goal || save.goals[M.goal];
       return `<button data-map="${m}" class="${m === save.map ? 'sel' : ''}" ${ok ? '' : 'disabled'}><b>${M.name}</b>${ok ? M.desc : 'Locked: ' + GOALS[M.goal].desc.toLowerCase() + ' first.'}</button>`; }).join('');
@@ -55,6 +55,16 @@
     if ($('joinBtn')) $('joinBtn').onclick = joinRoom;
     if ($('leaveBtn')) $('leaveBtn').onclick = leaveRoom;
   }
+  function renderDiff() {
+    if (role === 'client') { $('diff').innerHTML = ''; return; }
+    save.diff = Math.max(0, Math.min(save.diff, save.maxDiff)); const D = diffOf(save.diff), rank = Account.rank(save.xp).lvl;
+    $('diff').innerHTML = `<div class="row" style="margin-top:10px"><button data-d="-1" ${save.diff <= 0 ? 'disabled' : ''}>&#9664;</button><div style="flex:1;text-align:center"><b>${D.name}</b><br><small>enemy health x${D.hp.toFixed(1)}, damage x${D.dmg.toFixed(1)}</small></div><button data-d="1" ${save.diff >= save.maxDiff ? 'disabled' : ''}>&#9654;</button></div>
+      <small>${save.diff >= save.maxDiff ? 'Win on ' + D.name + ' to unlock ' + diffOf(save.maxDiff + 1).name + '.' : ''}</small>` +
+      (rank >= 3 ? `<div class="curses">${Object.keys(CURSES).map(c => `<label title="${CURSES[c].desc}"><input type="checkbox" data-cz="${c}" ${save.curses.indexOf(c) >= 0 ? 'checked' : ''}> ${CURSES[c].name} <small>${CURSES[c].desc} (+${Math.round(CURSES[c].rew * 100)}%)</small></label>`).join('')}</div>` : '<br><small>Curses (optional challenges for more rewards) unlock at Keeper Rank 3.</small>') +
+      `<div class="embers" style="margin-top:6px">Rewards x${rewardMult(save.diff, save.curses).toFixed(2)}</div>`;
+  }
+  $('diff').onclick = e => { const d = e.target.dataset; if (d.d) { save.diff += +d.d; persist(); renderDiff(); } };
+  $('diff').onchange = e => { const c = e.target.dataset.cz; if (!c) return; save.curses = save.curses.filter(x => x !== c); if (e.target.checked) save.curses.push(c); persist(); renderDiff(); };
   $('maps').onclick = e => { const b = e.target.closest('[data-map]'); if (!b || b.disabled) return; save.map = b.dataset.map; persist(); renderParty(); };
   $('name').oninput =e => { save.name = e.target.value; persist(); announce(); };
   $('chars').onclick = e => { const el = e.target.closest('.char'); if (!el || el.classList.contains('locked')) return; save.char = el.dataset.c; persist(); renderCamp(); announce(); };
@@ -109,7 +119,7 @@
   $('start').onclick = () => {
     if (role === 'client') return;
     if (role === 'solo') { myId = 0; party = [me()]; } else { Object.assign(party.find(p => p.id === myId), me()); }
-    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map });
+    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map, diff: Math.min(save.diff, save.maxDiff), curses: save.curses });
     tick = 0; netEv = [];
     Net.broadcast({ t: 'go' });
     enterGame();
@@ -205,7 +215,7 @@
     if (!inGame) return; inGame = false;
     const mine = R.per[myId] || { kills: 0, dmgBy: {}, char: save.char }, gains = [];
     const rank0 = Account.rank(save.xp).lvl, k0 = Account.keeper(save.keeper[mine.char] || 0).lvl;
-    const xp = Math.floor(R.time + R.kills * 0.2 + (R.win ? 300 : 0));
+    const xp = Math.floor((R.time + R.kills * 0.2 + (R.win ? 300 : 0)) * R.mult);
     let embers = Math.round(R.embers * (1 + 0.06 * (save.hearth.fortune || 0)));
     save.xp += xp; save.keeper[mine.char] = (save.keeper[mine.char] || 0) + xp; save.runs++; if (R.win) save.wins++;
     gains.push(`<b>+${embers} Embers</b> from the night`, `+${xp} account XP and ${CHARS[mine.char].name} XP`);
@@ -214,6 +224,12 @@
     if (k1 > k0) gains.push(`<b>${CHARS[mine.char].name} reached level ${k1}</b> (permanent +1% damage and +2 health per level)`);
     for (const w in mine.dmgBy) if (WEAPONS[w]) { const a = Account.mastery(save.mastery[w] || 0).rank; save.mastery[w] = (save.mastery[w] || 0) + Math.round(mine.dmgBy[w]); const b = Account.mastery(save.mastery[w]).rank; if (b > a) gains.push(`<b>${WEAPONS[w].name} mastery rank ${b}</b> (+${b * 3}% damage with it, forever)`); }
     for (const g in GOALS) if (!save.goals[g] && GOALS[g].test(R)) { save.goals[g] = 1; embers += GOALS[g].embers || 0; gains.push(`<b>Goal complete: ${GOALS[g].name}</b>. ${GOALS[g].reward}`); }
+    if (R.mult > 1) gains.push(`Rewards x${R.mult.toFixed(2)} for ${diffOf(R.diff).name}${R.curses.length ? ' with ' + R.curses.length + ' Curse' + (R.curses.length > 1 ? 's' : '') : ''}`);
+    if (R.win && R.diff >= save.maxDiff) { save.maxDiff = R.diff + 1; gains.push(`<b>New difficulty unlocked: ${diffOf(save.maxDiff).name}</b>`); }
+    // Heirlooms: one roll each for Wardens, Bargains and a long night, two for a win
+    let rolls = Math.min(5, R.wardens + R.bargains + (R.time >= 300 ? 1 : 0) + (R.win ? 2 : 0));
+    for (; rolls > 0; rolls--) { const h = Meta.roll(R.diff); if (save.heir.length >= 30) { save.glimmer += Meta.salvage(h); gains.push(`Bag full: ${esc(h.n)} was salvaged for Glimmer`); } else { save.heir.push(h); gains.push(`<b style="color:${RARITY[h.r].c}">Heirloom found: ${esc(h.n)}</b> (${RARITY[h.r].name}: ${h.lines.map(l => Meta.lineText(h, l)).join(', ')})`); } }
+    if (R.win) { const g = Math.round(30 * R.mult); save.glimmer += g; gains.push(`+${g} Glimmer from the boss`); }
     save.embers += embers; persist();
     const t = `${Math.floor(R.time / 60)}:${String(R.time % 60).padStart(2, '0')}`;
     $('endBody').innerHTML = `<h1 style="font-size:34px">${R.win ? 'Dawn breaks!' : 'The lights went out'}</h1>
@@ -229,9 +245,34 @@
     hearth() {
       let h = `<h1 style="font-size:30px">The Hearth</h1><p class="sub">Permanent upgrades for every Lanternkeeper you play. <span class="embers">${save.embers} Embers</span></p><table>`, br = '';
       for (const id in HEARTH) { const U = HEARTH[id], r = save.hearth[id] || 0, cost = hearthCost(id, r), max = r >= U.max;
-        if (U.branch !== br) { br = U.branch; h += `<tr><td colspan="3" class="branch">${br} &middot; ${{ Flame: 'offence', Stone: 'survival', Wind: 'utility' }[br]}</td></tr>`; }
-        h += `<tr><td><b>${U.name}</b><br><small>${U.desc} per rank</small></td><td>${r} / ${U.max}</td><td style="text-align:right">${max ? '<span class="done">Complete</span>' : `<button data-buy="${id}" ${save.embers < cost ? 'disabled' : ''}>Buy: ${cost}</button>`}</td></tr>`; }
+        const need = U.rank && Account.rank(save.xp).lvl < U.rank;
+        if (U.branch !== br) { br = U.branch; h += `<tr><td colspan="3" class="branch">${br} &middot; ${{ Flame: 'offence', Stone: 'survival', Wind: 'utility', Keystone: 'big one-off upgrades' }[br]}</td></tr>`; }
+        h += `<tr><td><b>${U.name}</b><br><small>${U.desc}${U.max > 1 ? ' per rank' : ''}</small></td><td>${r} / ${U.max}</td><td style="text-align:right">${max ? '<span class="done">Complete</span>' : need ? `<small>Needs Keeper Rank ${U.rank}</small>` : `<button data-buy="${id}" ${save.embers < cost ? 'disabled' : ''}>Buy: ${cost}</button>`}</td></tr>`; }
       return h + '</table>';
+    },
+    heir() {
+      const rank = Account.rank(save.xp).lvl, slots = Meta.slots(rank), nextAt = [4, 8, 14].find(r => r > rank);
+      const row = (h, eq) => `<tr><td><b style="color:${RARITY[h.r].c}">${esc(h.n)}</b> <small>${RARITY[h.r].name}${h.lvl ? ' +' + h.lvl : ''}</small><br><small>${h.lines.map(l => Meta.lineText(h, l)).join(' &middot; ')}</small></td>
+        <td style="text-align:right;white-space:nowrap"><button data-h="${eq ? 'off' : 'on'}:${h.id}" ${!eq && save.equip.length >= slots ? 'disabled' : ''}>${eq ? 'Take off' : 'Equip'}</button>
+        <button data-h="up:${h.id}" ${h.lvl >= 5 || save.glimmer < Meta.upCost(h) ? 'disabled' : ''}>${h.lvl >= 5 ? 'Max' : 'Upgrade: ' + Meta.upCost(h)}</button>
+        ${eq ? '' : `<button data-h="sal:${h.id}">Salvage: +${Meta.salvage(h)}</button>`}</td></tr>`;
+      const eq = save.heir.filter(h => save.equip.indexOf(h.id) >= 0), bag = save.heir.filter(h => save.equip.indexOf(h.id) < 0).sort((a, b) => b.r - a.r);
+      return `<h1 style="font-size:30px">Heirlooms</h1><p class="sub">Found at the end of a night: from Wardens, Dark Bargains, long nights and bosses. Harder difficulties find rarer ones. <span style="color:#c58bff;font-weight:700">${save.glimmer} Glimmer</span></p>
+        <h2>Wearing ${eq.length} of ${slots}${nextAt ? ` <small>(next slot at Keeper Rank ${nextAt})</small>` : ''}</h2><table>${eq.map(h => row(h, true)).join('') || '<tr><td>Nothing equipped yet.</td></tr>'}</table>
+        <h2>In your bag (${bag.length} of 30)</h2><table>${bag.map(h => row(h, false)).join('') || '<tr><td>Empty. Play a night to find some.</td></tr>'}</table>
+        <p><small>Upgrading costs Glimmer and makes every line 20% stronger, up to +5. Salvaging destroys an Heirloom for Glimmer.</small></p>`;
+    },
+    talents() {
+      const c = save.char, C = CHARS[c], t = save.talents[c] || {}, pts = Meta.talentPoints(save, c), free = pts.total - pts.used;
+      return `<h1 style="font-size:30px">${C.name}'s Talents</h1><p class="sub">Each level ${C.name} gains gives one point. Pick a different keeper on the camp screen to see theirs. <b style="color:#ffd27a">${free} point${free === 1 ? '' : 's'} to spend</b> (${pts.total} earned)</p><table>` +
+        Object.keys(TALENTS).map(id => { const T = TALENTS[id], r = t[id] || 0, cost = T.cost || 1, locked = T.need && pts.used < T.need && !r;
+          return `<tr><td><b>${T.name}</b><br><small>${T.desc}${T.max > 1 ? ' per rank' : ''}${cost > 1 ? ` (costs ${cost} points)` : ''}</small></td><td>${r} / ${T.max}</td><td style="text-align:right">${r >= T.max ? '<span class="done">Complete</span>' : locked ? `<small>Spend ${T.need} points first</small>` : `<button data-t="${id}" ${free < cost ? 'disabled' : ''}>Learn</button>`}</td></tr>`; }).join('') +
+        `</table><button data-t="reset" style="margin-top:12px">Reset ${C.name}'s talents (free)</button>`;
+    },
+    savefile() {
+      return `<h1 style="font-size:30px">Save file</h1><p class="sub">Your progress lives in this browser. Copy the text below somewhere safe to back it up, or paste a saved text and press Load to bring progress to another browser or computer.</p>
+        <textarea id="saveText" style="width:100%;height:150px;background:#0e0c1b;color:#cfc8ea;border:1px solid #4a3f7a;border-radius:8px;padding:8px">${btoa(unescape(encodeURIComponent(JSON.stringify(save))))}</textarea>
+        <div class="row" style="margin-top:8px"><button data-s="copy">Copy to clipboard</button><button data-s="load">Load the text in the box (replaces current progress)</button></div><p id="saveMsg" class="msg"></p>`;
     },
     goals() {
       return `<h1 style="font-size:30px">Goal Book</h1><p class="sub">Finish goals during a night to unlock new things.</p><table>` + Object.keys(GOALS).map(g => `<tr><td><b>${GOALS[g].name}</b><br><small>${GOALS[g].desc}</small></td><td>${GOALS[g].reward}</td><td class="${save.goals[g] ? 'done' : ''}">${save.goals[g] ? 'Done' : 'Not yet'}</td></tr>`).join('') + '</table>';
@@ -255,7 +296,27 @@
   const openPage = p => { page = p; $('modalBody').innerHTML = PAGES[p](); $('modal').classList.remove('hidden'); };
   document.querySelectorAll('[data-modal]').forEach(b => b.onclick = () => openPage(b.dataset.modal));
   $('modalClose').onclick = () => { $('modal').classList.add('hidden'); renderCamp(); announce(); };
-  $('modalBody').onclick = e => { const id = e.target.dataset && e.target.dataset.buy; if (!id) return; const r = save.hearth[id] || 0, cost = hearthCost(id, r); if (r >= HEARTH[id].max || save.embers < cost) return; save.embers -= cost; save.hearth[id] = r + 1; persist(); openPage('hearth'); };
+  $('modalBody').onclick = e => {
+    const d = e.target.dataset || {};
+    if (d.buy) { const id = d.buy, U = HEARTH[id], r = save.hearth[id] || 0, cost = hearthCost(id, r); if (r >= U.max || save.embers < cost || (U.rank && Account.rank(save.xp).lvl < U.rank)) return; save.embers -= cost; save.hearth[id] = r + 1; persist(); openPage('hearth'); }
+    else if (d.h) {
+      const [act, id] = d.h.split(':'), h = save.heir.find(x => x.id === id); if (!h) return;
+      if (act === 'on') { if (save.equip.length < Meta.slots(Account.rank(save.xp).lvl)) save.equip.push(id); }
+      else if (act === 'off') save.equip = save.equip.filter(x => x !== id);
+      else if (act === 'up') { const c = Meta.upCost(h); if (h.lvl < 5 && save.glimmer >= c) { save.glimmer -= c; h.lvl++; } }
+      else if (act === 'sal' && save.equip.indexOf(id) < 0) { save.glimmer += Meta.salvage(h); save.heir = save.heir.filter(x => x !== h); }
+      persist(); openPage('heir');
+    } else if (d.t) {
+      const c = save.char;
+      if (d.t === 'reset') save.talents[c] = {};
+      else { const T = TALENTS[d.t], t = save.talents[c] = save.talents[c] || {}, pts = Meta.talentPoints(save, c), cost = T.cost || 1; if ((t[d.t] || 0) < T.max && pts.total - pts.used >= cost && !(T.need && pts.used < T.need)) t[d.t] = (t[d.t] || 0) + 1; }
+      persist(); openPage('talents');
+    } else if (d.s === 'copy') { const ta = $('saveText'); ta.select(); try { navigator.clipboard.writeText(ta.value); $('saveMsg').textContent = 'Copied.'; } catch (err) { $('saveMsg').textContent = 'Select the text and copy it yourself (Ctrl+C).'; } }
+    else if (d.s === 'load') {
+      try { const s = JSON.parse(decodeURIComponent(escape(atob($('saveText').value.trim())))); if (!s || typeof s !== 'object' || !('embers' in s)) throw 0; save = Object.assign(blank(), s); persist(); openPage('savefile'); $('saveMsg').textContent = 'Loaded.'; }
+      catch (err) { $('saveMsg').textContent = 'That text is not a valid save.'; }
+    }
+  };
 
   // ---------- keyboard and the draw loop ----------
   const KEYMAP = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };

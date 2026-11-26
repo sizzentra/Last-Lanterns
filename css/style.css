@@ -73,3 +73,5 @@ ul.gain { padding-left: 18px; line-height: 1.7; }
 #maps button { flex: 1; text-align: left; font-weight: 400; font-size: 13px; }
 #maps button b { display: block; font-size: 15px; }
 #maps button.sel { border-color: #ffd27a; background: #3a2c1c; }
+.curses { margin-top: 8px; display: grid; gap: 3px; font-size: 13px; }
+.curses label { cursor: pointer; }

@@ -17,7 +17,9 @@ const Sim = (() => {
       level: 1, xp: 0, xpNeed: need(1), pause: null, pendLv: 0, pendChest: 0, pendBoon: 0,
       shrine: null, nextShrine: 70, nextElite: 110, boss: null, bossTime: opts.bossTime || 720, over: null,
       acc: 0, coins: 0, kills: 0, shrines: 0, reactions: 0, evos: 0, dirty: true, dotT: 0, txt: 0, n: defs.length,
-      map: MAPS[opts.map] ? opts.map : 'fields', nextWarden: 240, nextSurge: 330, nextAltar: 170, altar: null, curse: 0, bargains: 0, wardens: 0 };
+      map: MAPS[opts.map] ? opts.map : 'fields', nextWarden: 240, nextSurge: 330, nextAltar: 170, altar: null, curse: 0, bargains: 0, wardens: 0,
+      diff: opts.diff | 0, dm: diffOf(opts.diff | 0), cz: {} };
+    for (const c of opts.curses || []) if (CURSES[c]) G.cz[c] = 1;
     defs.forEach((d, i) => {
       const a = i / defs.length * 6.283, off = defs.length > 1 ? 50 : 0;
       const p = { id: d.id, name: d.name, char: d.char, meta: d.meta || {}, x: Math.cos(a) * off, y: Math.sin(a) * off, fx: 1, fy: 0,
@@ -25,7 +27,12 @@ const Sim = (() => {
         still: 0, kin: 1, kills: 0, reacts: 0, dmgBy: {}, usedSecond: false, mv: false,
         ward: 0, ultT: 0, ultCd: 0, ultAcc: 0, asc: {}, banned: {} };
       p.rerolls = 1 + ((p.meta.h || {}).reroll || 0); p.banishes = (p.meta.h || {}).banish || 0;
-      addWeapon(p, CHARS[p.char].weapon); recompute(p); p.hp = p.st.maxhp; G.players.push(p);
+      const mh = p.meta.h || {}, mf = p.meta.f || {};
+      p.wslots = mh.kslot ? 6 : 5;
+      addWeapon(p, CHARS[p.char].weapon); if (mf.startLvl) p.weapons[0].lvl = 2;
+      if (mh.kcharm) { const ids = Object.keys(CHARMS); p.charms.push({ id: ids[Math.random() * ids.length | 0], lvl: 1 }); }
+      if (mh.kboon) { const ids = Object.keys(BOONS).filter(b => !BOONS[b].r && b !== 'kindred' && b !== 'second'); p.boons.push(ids[Math.random() * ids.length | 0]); }
+      recompute(p); p.hp = p.st.maxhp; G.players.push(p);
     });
     return G;
   }
@@ -40,11 +47,13 @@ const Sim = (() => {
     s.cdr += 0.025 * (h.tempo || 0); s.react += 0.08 * (h.alchemy || 0); s.maxhp += 8 * (h.vigor || 0) + 2 * kl;
     s.armor += h.plating || 0; s.regen += 0.2 * (h.mending || 0); s.spd += 0.02 * (h.stride || 0);
     s.pickup *= 1 + 0.08 * (h.magnet || 0); s.xp += 0.03 * (h.wisdom || 0);
+    const x = m.x || {}; for (const k in x) { if (k === 'pickupP') s.pickup *= 1 + x[k]; else if (k in s) s[k] += x[k]; } // Heirlooms and talents
     CHARS[p.char].f(s);
     for (const c of p.charms) CHARMS[c.id].f(s, c.lvl);
     for (const b of p.boons) if (BOONS[b].f) BOONS[b].f(s);
     const a = p.asc; s.dmg += 0.06 * (a.dmg || 0); s.area += 0.05 * (a.area || 0); s.cdr += 0.05 * (a.cdr || 0); s.maxhp += 15 * (a.hp || 0); s.crit += 0.03 * (a.crit || 0);
     s.cards += h.cards || 0;
+    if (G.cz.frail) s.maxhp *= 0.7; if (G.cz.famine) s.regen *= 0.5; if (G.cz.dim) s.pickup *= 0.5;
     s.maxhp = Math.round(s.maxhp); s.cdr = Math.max(0.3, s.cdr);
     const old = p.st ? p.st.maxhp : s.maxhp;
     if (s.maxhp > old) p.hp += s.maxhp - old;
@@ -54,7 +63,7 @@ const Sim = (() => {
   }
   const resN = (p, el) => hasBoon(p, 'prism') ? p.weapons.length : (p.res[el] || 0);
   const resMul = (p, el) => { const c = resN(p, el); return c >= 4 ? 1.75 : c >= 3 ? 1.45 : c >= 2 ? 1.2 : 1; };
-  const wd = (p, w, base) => base * p.st.dmg * resMul(p, WEAPONS[w.id].el) * (1 + 0.03 * ((p.meta.m || {})[w.id] || 0)) * p.kin;
+  const wd = (p, w, base) => base * p.st.dmg * resMul(p, WEAPONS[w.id].el) * (1 + 0.03 * ((p.meta.m || {})[w.id] || 0)) * (1 + ((p.meta.el || {})[WEAPONS[w.id].el] || 0)) * p.kin;
 
   // ---------- helpers ----------
   function near(x, y, maxR, skip) {
@@ -133,7 +142,7 @@ const Sim = (() => {
     if (e.type === 6) for (let i = 0; i < 3; i++) spawn(7, e.x + rnd(-14, 14), e.y + rnd(-14, 14));
     if (e.type === 11) { G.wardens++; drop(PICK.heart, { x: e.x + 30, y: e.y }); text(e.x, e.y - 50, 'Warden down!', '#c9a8ff'); }
     if (T.chest) G.pickups.push({ id: uid++, k: PICK.chest, x: e.x, y: e.y });
-    else { const r = Math.random(); if (r < 0.004) drop(PICK.heart, e); else if (r < 0.0055) drop(PICK.magnet, e); else if (r < 0.03) drop(PICK.coin, e); }
+    else { const r = Math.random(); if (r < 0.004) { if (!G.cz.famine) drop(PICK.heart, e); } else if (r < 0.0055) drop(PICK.magnet, e); else if (r < 0.03) drop(PICK.coin, e); }
     if (p && hasBoon(p, 'blood') && Math.random() < 0.06) p.hp = Math.min(p.st.maxhp, p.hp + 3);
   }
   const drop = (k, e) => G.pickups.push({ id: uid++, k, x: e.x, y: e.y });
@@ -300,7 +309,7 @@ const Sim = (() => {
   function skill(p) {
     if (p.down || p.skillT > 0) return;
     const lv = 1 + G.level * 0.1, c = p.char;
-    p.skillT = CHARS[c].cd / Math.min(1.6, p.st.cdr);
+    p.skillT = CHARS[c].cd / Math.min(1.6, p.st.cdr) * ((p.meta.f || {}).skillCd || 1);
     if (c === 'wick') p.dashT = 0.28;
     else if (c === 'mara') { const r = 230 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#bfeeff'); inR(p.x, p.y, r, e => { e.frozen = Math.max(e.frozen, 2.2); hit(e, 30 * lv * p.st.dmg, p, 'skill', 'frost'); }); }
     else if (c === 'tolliver') { const r = 140 * p.st.area; fx('z', p.x | 0, p.y | 0, r | 0); inR(p.x, p.y, r, e => hit(e, 45 * lv * p.st.dmg, p, 'skill', 'storm')); }
@@ -309,7 +318,7 @@ const Sim = (() => {
   function ult(p) {
     if (p.down || p.ultCd > 0 || G.level < 6) return;
     const lv = (1 + G.level * 0.1) * p.st.dmg, c = p.char;
-    p.ultCd = 45 / Math.min(1.6, p.st.cdr);
+    p.ultCd = 45 / Math.min(1.6, p.st.cdr) * ((p.meta.f || {}).ultCd || 1);
     text(p.x, p.y - 44, CHARS[c].ult + '!', CHARS[c].c);
     if (c === 'wick' || c === 'tolliver') { p.ultT = 5; p.ultAcc = 1; }
     else if (c === 'mara') { fx('r', p.x | 0, p.y | 0, 620, '#bfeeff'); fx('x', p.x | 0, p.y | 0, 300, '#bfeeff'); inR(p.x, p.y, 620, e => { e.frozen = Math.max(e.frozen, 4); e.chill = 6; hit(e, 60 * lv, p, 'ult', 'frost'); }); }
@@ -390,15 +399,15 @@ const Sim = (() => {
   // ---------- enemies ----------
   function spawn(type, x, y, hpMul) {
     const T = ENEMIES[type], hs = 1 + (G.t / 60) * 0.3 + (G.t / 60) ** 2 * 0.022;
-    const hp = T.hp * hs * (hpMul || 1);
-    const e = { id: uid++, type, x: Math.max(-WORLD - 80, Math.min(WORLD + 80, x)), y: Math.max(-WORLD - 80, Math.min(WORLD + 80, y)), hp, maxhp: hp, spd: T.spd * rnd(0.9, 1.1) * (G.curse > 0 ? 1.25 : 1), dmg: T.dmg * (1 + G.t / 600), r: T.r,
+    const hp = T.hp * hs * (hpMul || 1) * G.dm.hp;
+    const e = { id: uid++, type, x: Math.max(-WORLD - 80, Math.min(WORLD + 80, x)), y: Math.max(-WORLD - 80, Math.min(WORLD + 80, y)), hp, maxhp: hp, spd: T.spd * rnd(0.9, 1.1) * (G.curse > 0 ? 1.25 : 1) * (G.cz.swift ? 1.25 : 1), dmg: T.dmg * (1 + G.t / 600) * G.dm.dmg, r: T.r,
       burn: 0, chill: 0, shock: 0, rot: 0, rotN: 0, frozen: 0, slow: 0, hc: 0, rc: 0, shT: 0, st: null, bt: 0, big: !!T.big, at: rnd(1, 3), src: null, dead: false };
     G.enemies.push(e); return e;
   }
   function spawner() {
     const alive = G.players.filter(p => !p.down); if (!alive.length) return;
     const n = G.n, tm = G.t / 60, around = (d0, d1) => { const p = alive[Math.random() * alive.length | 0], a = rnd(0, 6.283), d = rnd(d0, d1); return [p.x + Math.cos(a) * d, p.y + Math.sin(a) * d]; };
-    const rate = (0.8 + tm * 0.95 + tm * tm * 0.06) * (0.55 + 0.45 * n) * (G.boss ? 0.45 : 1) * (G.curse > 0 ? 1.8 : 1);
+    const rate = (0.8 + tm * 0.95 + tm * tm * 0.06) * (0.55 + 0.45 * n) * (G.boss ? 0.45 : 1) * (G.curse > 0 ? 1.8 : 1) * (G.cz.horde ? 1.4 : 1);
     const cap = Math.min(330, 30 + G.t * 0.5 * (0.6 + 0.4 * n));
     G.acc += rate * DT;
     while (G.acc >= 1) {
@@ -414,7 +423,7 @@ const Sim = (() => {
       else spawn(0, x, y);
     }
     // mini-bosses, surges and the Dark Bargain
-    if (!G.boss && G.t >= G.nextWarden) { G.nextWarden += 240; const [x, y] = around(620, 680); spawn(11, x, y, 0.5 + 0.5 * n); text(alive[0].x, alive[0].y - 60, 'A Gloom Warden has found you', '#c9a8ff'); }
+    if (!G.boss && G.t >= G.nextWarden) { G.nextWarden += 240; const [x, y] = around(620, 680); spawn(11, x, y, 0.5 + 0.5 * n); if (G.cz.twins) spawn(11, x + 90, y, 0.5 + 0.5 * n); text(alive[0].x, alive[0].y - 60, 'A Gloom Warden has found you', '#c9a8ff'); }
     if (!G.boss && G.t >= G.nextSurge) {
       G.nextSurge += 200; const p = alive[Math.random() * alive.length | 0], c = 26 + 10 * n;
       for (let i = 0; i < c; i++) spawn(0, p.x + Math.cos(i / c * 6.283) * 540, p.y + Math.sin(i / c * 6.283) * 540);
@@ -431,7 +440,7 @@ const Sim = (() => {
       G.curse -= DT;
       if (G.curse <= 0) { G.bargains++; G.nextAltar = G.t + 170; G.coins += 40; G.pendChest++; addXp(G.xpNeed * 1.5, null); text(alive[0].x, alive[0].y - 60, 'Bargain kept: reward!', '#ffd27a'); }
     }
-    if (!G.boss && G.t >= G.nextElite) { G.nextElite += 80; const [x, y] = around(640, 700); spawn(4, x, y, 0.5 + 0.5 * n); text(alive[0].x, alive[0].y - 60, 'An elite approaches', '#ff6b5c'); }
+    if (!G.boss && G.t >= G.nextElite) { G.nextElite += 80; const [x, y] = around(640, 700); spawn(4, x, y, 0.5 + 0.5 * n); if (G.cz.twins) spawn(4, x + 70, y, 0.5 + 0.5 * n); text(alive[0].x, alive[0].y - 60, 'An elite approaches', '#ff6b5c'); }
     if (!G.shrine && G.t >= G.nextShrine && !G.boss) { const [x, y] = around(280, 430); G.shrine = { x: Math.max(-WORLD + 150, Math.min(WORLD - 150, x)), y: Math.max(-WORLD + 150, Math.min(WORLD - 150, y)), r: 105, prog: 0 }; }
     if (!G.boss && G.t >= G.bossTime) { const [x, y] = around(560, 600); G.boss = spawn(5, x, y, (0.5 + 0.5 * n) / (1 + (G.t / 60) * 0.3 + (G.t / 60) ** 2 * 0.022) * (1 + G.level * 0.06)); G.boss.st = 'idle'; G.boss.bt = 2; G.boss.born = G.t; G.boss.seq = 0; fx('r', x | 0, y | 0, 300, '#e8e0ff'); }
     if (G.shrine) {
@@ -442,7 +451,7 @@ const Sim = (() => {
   }
   function eshot(e, a, spd, dmg) { G.shots.push({ id: uid++, k: SHOT.spit, x: e.x, y: e.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, r: 7, dmg, enemy: true, life: 5, t: 0 }); }
   function bossAI(e, tp, d, dx, dy) {
-    const enr = G.t - e.born > 100; e.bt -= DT;
+    const enr = G.cz.enrage || G.t - e.born > 100; e.bt -= DT;
     if (e.st === 'idle') {
       e.x += dx / d * e.spd * DT; e.y += dy / d * e.spd * DT;
       if (e.bt <= 0) {
@@ -456,7 +465,7 @@ const Sim = (() => {
     if (d < e.r + 14 && e.hc <= 0) { hurt(tp, e.dmg * (e.st === 'dash' ? 1.5 : 1) * (enr ? 1.5 : 1)); e.hc = 0.7; }
   }
   function bellAI(e, tp, d, dx, dy) { // The Drowned Bell: spirals of shots, a tolling shockwave, and wisps
-    const enr = G.t - e.born > 100; e.bt -= DT;
+    const enr = G.cz.enrage || G.t - e.born > 100; e.bt -= DT;
     if (e.st !== 'wind') { e.x += dx / d * e.spd * 0.6 * DT; e.y += dy / d * e.spd * 0.6 * DT; }
     if (e.st === 'spiral') { e.sa += DT * 2.4; e.sc += DT; if (e.sc >= 0.09) { e.sc = 0; eshot(e, e.sa, 190, e.dmg * 0.5); eshot(e, e.sa + Math.PI, 190, e.dmg * 0.5); if (enr) eshot(e, e.sa + 1.57, 190, e.dmg * 0.5); } if (e.bt <= 0) { e.st = 'idle'; e.bt = enr ? 0.8 : 1.5; } }
     else if (e.st === 'wind') { if (e.bt <= 0) { const r = enr ? 380 : 320; fx('r', e.x | 0, e.y | 0, r, '#7fe0d0'); fx('x', e.x | 0, e.y | 0, r, '#2f8f80'); for (const p of G.players) if (!p.down && (p.x - e.x) ** 2 + (p.y - e.y) ** 2 < r * r) hurt(p, e.dmg * 1.6); e.st = 'idle'; e.bt = enr ? 0.8 : 1.5; } }
@@ -562,7 +571,7 @@ const Sim = (() => {
     const out = [], pool = [], n = p.st.cards, own = id => p.charms.some(c => c.id === id);
     for (const w of p.weapons) { if (w.lvl >= 5 && !w.evo && own(WEAPONS[w.id].charm)) out.push({ k: 'evo', id: w.id }); else if (w.lvl < 5) pool.push({ k: 'w', id: w.id, lvl: w.lvl + 1, wt: 3 }); }
     const lock = p.meta.lock || [];
-    if (p.weapons.length < 5) for (const id in WEAPONS) if (!p.weapons.some(w => w.id === id) && lock.indexOf(id) < 0 && !p.banned['w' + id]) pool.push({ k: 'w', id, lvl: 1, wt: p.res[WEAPONS[id].el] ? 2.6 : 2 });
+    if (p.weapons.length < p.wslots) for (const id in WEAPONS) if (!p.weapons.some(w => w.id === id) && lock.indexOf(id) < 0 && !p.banned['w' + id]) pool.push({ k: 'w', id, lvl: 1, wt: p.res[WEAPONS[id].el] ? 2.6 : 2 });
     for (const c of p.charms) if (c.lvl < 5) pool.push({ k: 'c', id: c.id, lvl: c.lvl + 1, wt: 3 });
     if (p.charms.length < 5) for (const id in CHARMS) if (!own(id) && !p.banned['c' + id]) pool.push({ k: 'c', id, lvl: 1, wt: p.weapons.some(w => WEAPONS[w.id].charm === id) ? 4 : 1.5 });
     sample(pool, n, out);
@@ -641,8 +650,9 @@ const Sim = (() => {
   }
   function results() {
     const per = {}; for (const p of G.players) per[p.id] = { kills: p.kills, reacts: p.reacts, dmgBy: p.dmgBy, char: p.char };
-    return { win: !!(G.over && G.over.win), time: Math.floor(G.t), level: G.level, kills: G.kills, shrines: G.shrines, boons: Math.max(0, ...G.players.map(p => p.boons.length)), reactions: G.reactions, evos: G.evos, players: G.n, map: G.map, bargains: G.bargains, wardens: G.wardens,
-      embers: Math.floor(G.t * 0.3 + G.kills * 0.05 + G.coins + (G.over && G.over.win ? 150 : 0)), per };
+    const mult = rewardMult(G.diff, Object.keys(G.cz));
+    return { win: !!(G.over && G.over.win), diff: G.diff, curses: Object.keys(G.cz), mult, time: Math.floor(G.t), level: G.level, kills: G.kills, shrines: G.shrines, boons: Math.max(0, ...G.players.map(p => p.boons.length)), reactions: G.reactions, evos: G.evos, players: G.n, map: G.map, bargains: G.bargains, wardens: G.wardens,
+      embers: Math.floor((G.t * 0.3 + G.kills * 0.05 + G.coins + (G.over && G.over.win ? 150 : 0)) * mult), per };
   }
   return { DT, WORLD, newGame, step, snap, builds, results, input, pick, redeal, removePlayer, get G() { return G; } };
 })();

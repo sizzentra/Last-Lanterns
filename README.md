@@ -44,7 +44,7 @@ To try it by yourself: open the game in two browser tabs, host in one and join f
 
 ## Your progress
 
-Embers, Keeper Rank, keeper levels, weapon mastery, Hearth upgrades and goals are saved in your browser on this computer. Clearing the browser's site data for the game erases them.
+Embers, Keeper Rank, keeper levels, talents, weapon mastery, Heirlooms, Hearth upgrades and goals are saved in your browser on this computer. Clearing the browser's site data for the game erases them, so use **Save file** on the camp screen to copy a backup, or to move your progress to another browser or computer.
 
 ## For testing
 
