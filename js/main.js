@@ -129,7 +129,7 @@
     enterGame();
   };
   function enterGame() {
-    inGame = true; snd = { lv: 1, hp: 0, boss: false, down: false, sh: false }; Sfx.init(); Sfx.music(true); $('mute').classList.remove('hidden'); picked = true; curCards = null; skLatch = false; dashT = 0;
+    showStats(false); inGame = true; snd = { lv: 1, hp: 0, boss: false, down: false, sh: false }; Sfx.init(); Sfx.music(true); $('mute').classList.remove('hidden'); picked = true; curCards = null; skLatch = false; dashT = 0;
     View.reset(); $('camp').classList.add('hidden'); $('end').classList.add('hidden'); $('cards').classList.add('hidden'); $('build').classList.remove('hidden'); $('build').innerHTML = '';
   }
   function showCamp() { $('camp').classList.remove('hidden'); $('build').classList.add('hidden'); $('cards').classList.add('hidden'); renderCamp(); }
@@ -168,12 +168,32 @@
     if (!s.pz && !$('cards').classList.contains('hidden')) $('cards').classList.add('hidden');
     else if (s.pz && curCards && !picked) $('cardsSub').textContent = `Press 1, 2 or 3, or click. Auto-picks in ${s.pz}s.`;
   }
+  function renderStats() {
+    const b = View.builds.find(x => x.id === myId), el = $('stats'); if (!b || !b.full || el.classList.contains('hidden')) return;
+    const s = b.full, pc = v => Math.round(v * 100) + '%', c = View.cur, me = c && c.P.get(myId);
+    const rows = [['Health', me ? Math.max(0, me.hp) + ' / ' + me.max : s.maxhp], ['Damage', pc(s.dmg)], ['Weapon speed', pc(s.cdr)], ['Area', pc(s.area)], ['Effect duration', pc(s.dur)], ['Crit chance', pc(s.crit)],
+      ['Extra projectiles', '+' + s.proj], ['Reaction damage', pc(s.react)], ['Mark duration', pc(s.markDur)], ['Move speed', pc(s.spd)], ['Armor', s.armor], ['Healing', s.regen.toFixed(1) + ' / sec'], ['Pickup range', Math.round(s.pickup)], ['XP gain', pc(s.xp)]];
+    const dmg = Object.entries(b.dmgBy || {}).sort((a, z) => z[1] - a[1]), tot = dmg.reduce((a, d) => a + d[1], 0) || 1;
+    const NAMES = { react: 'Reactions', dot: 'Burn and Rot', skill: 'Skill', ult: 'Ultimate', shrine: 'Shrines' };
+    const big = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : Math.round(v);
+    el.innerHTML = `<h2 style="margin-top:0">Your stats</h2><table>${rows.map(r => `<tr><td>${r[0]}</td><td style="text-align:right"><b>${r[1]}</b></td></tr>`).join('')}</table>
+      <h2>Damage dealt this night</h2><table>${dmg.map(d => `<tr><td>${WEAPONS[d[0]] ? WEAPONS[d[0]].name : NAMES[d[0]] || d[0]}</td><td style="text-align:right"><b>${big(d[1])}</b> <small>${Math.round(d[1] / tot * 100)}%</small></td></tr>`).join('') || '<tr><td>None yet</td></tr>'}</table>
+      <small>${b.kills || 0} enemies defeated by you${Object.keys(b.asc || {}).length ? ' &middot; Ascensions: ' + Object.values(b.asc).reduce((a, v) => a + v, 0) : ''}</small>`;
+  }
+  const showStats = on => { $('stats').classList.toggle('hidden', !on); if (on) renderStats(); };
   function onBuilds(B) {
     View.builds = B;
     const b = B.find(x => x.id === myId); if (!b) return;
     const pips = (l, evo) => evo ? ' &#9733; EVOLVED' : ' <span class="pip">' + '&#9679;'.repeat(l) + '&#9675;'.repeat(5 - l) + '</span>';
-    let h = b.w.map(w => `<div style="color:${ELEM[WEAPONS[w[0]].el].c}">${w[2] ? WEAPONS[w[0]].evo : WEAPONS[w[0]].name}${pips(w[1], w[2])}</div>`).join('');
+    const evoNote = w => { // tell the player exactly what each weapon still needs to evolve
+      if (w[2]) return b.aw && b.aw[b.w.indexOf(w)] ? ` <small>Awakened +${b.aw[b.w.indexOf(w)]}</small>` : '';
+      const ch = WEAPONS[w[0]].charm, has = b.c.some(c => c[0] === ch);
+      return ` <small style="color:${has ? '#8be06a' : '#a79fc4'}">${w[1] >= 5 ? (has ? 'evolves on your next level-up' : 'needs ' + CHARMS[ch].name + ' or an elite chest') : (has ? 'has ' : 'needs ') + CHARMS[ch].name}</small>`;
+    };
+    let h = b.w.map(w => `<div style="color:${ELEM[WEAPONS[w[0]].el].c}">${w[2] ? WEAPONS[w[0]].evo : WEAPONS[w[0]].name}${pips(w[1], w[2])}${evoNote(w)}</div>`).join('');
     h += b.c.map(c => `<div style="color:#cfc8ea">${CHARMS[c[0]].name}${pips(c[1])}</div>`).join('');
+    h += `<div style="color:#7d74a8">Hold Tab for your stats</div>`;
+    renderStats();
     h += Object.keys(b.res).filter(e => b.res[e] >= 2).map(e => `<span class="res" style="color:${ELEM[e].c}">${ELEM[e].name} x${b.res[e]} +${b.res[e] >= 3 ? 45 : 20}%</span>`).join('');
     h += b.b.map(x => `<div class="boon">&#10022; ${BOONS[x].name}</div>`).join('');
     $('build').innerHTML = h;
@@ -186,13 +206,14 @@
     if (c.k === 'w' || c.k === 'evo') {
       const W = WEAPONS[c.id], E = ELEM[W.el]; col = E.c;
       const hasCharm = b.c.some(x => x[0] === W.charm);
-      if (c.k === 'evo') { cls = 'evo'; tag = 'Evolution'; title = W.evo; desc = W.evoDesc; }
+      if (c.k === 'evo') { cls = 'evo'; tag = 'Evolution'; title = W.evo; desc = W.evoDesc; if (c.free) hint = 'The chest evolves this without its charm.'; }
       else { tag = (c.lvl === 1 ? 'New weapon' : 'Weapon level ' + c.lvl) + ' &middot; ' + E.name; title = W.name; desc = W.desc; hint = `Evolves at level 5 with the charm ${CHARMS[W.charm].name}${hasCharm ? ' (you have it)' : ''}.`; if (E.mark && c.lvl === 1) hint += ` Two different marks on one enemy cause a reaction.`; }
     } else if (c.k === 'c') {
       const C = CHARMS[c.id]; tag = c.lvl === 1 ? 'New charm' : 'Charm level ' + c.lvl; title = C.name; desc = C.desc + ' per level.';
       const mine = Object.keys(WEAPONS).filter(w => WEAPONS[w].charm === c.id && b.w.some(x => x[0] === w));
       if (mine.length) hint = `Lets your ${mine.map(w => WEAPONS[w].name).join(' and ')} evolve at level 5.`;
     } else if (c.k === 'boon') { const B = BOONS[c.id], r = B.r || 1; tag = ['', 'Boon', 'Rare Boon', 'Legendary Boon'][r]; col = ['', '#ffd27a', '#6bb8ff', '#ff7ad9'][r]; if (r === 3) cls = 'evo'; title = B.name; desc = B.desc + '.'; hint = 'Lasts for the rest of this night.'; }
+    else if (c.k === 'aw') { const W = WEAPONS[c.id]; tag = 'Awaken &middot; ' + ELEM[W.el].name; col = ELEM[W.el].c; title = W.evo + ' +' + c.n; desc = `+20% damage with ${W.evo}. Evolved weapons can be awakened again and again.`; }
     else if (c.k === 'asc') { const A = { dmg: ['Ascend: Might', '+6% damage'], area: ['Ascend: Reach', '+5% area'], cdr: ['Ascend: Tempo', 'Weapons fire 5% faster'], hp: ['Ascend: Vigor', '+15 max health'], crit: ['Ascend: Edge', '+3% crit chance'] }[c.id]; tag = 'Ascension'; col = '#ff7ad9'; title = A[0]; desc = A[1] + '. Stacks forever.'; hint = `You have taken this ${(b.asc && b.asc[c.id]) || 0} time(s).`; }
     else if (c.k === 'heal') { tag = 'Rest'; title = 'Catch your breath'; desc = 'Heal 30% of your health.'; }
     else { tag = 'Spoils'; title = 'Pocket the Embers'; desc = '+25 Embers for the team.'; }
@@ -222,7 +243,7 @@
 
   // ---------- end of a night: pay out lasting progress ----------
   function onEnd(R) {
-    if (!inGame) return; inGame = false; Sfx.music(false); Sfx.play(R.win ? 'win' : 'lose'); $('mute').classList.add('hidden');
+    if (!inGame) return; inGame = false; showStats(false); Sfx.music(false); Sfx.play(R.win ? 'win' : 'lose'); $('mute').classList.add('hidden');
     const mine = R.per[myId] || { kills: 0, dmgBy: {}, char: save.char }, gains = [];
     const rank0 = Account.rank(save.xp).lvl, k0 = Account.keeper(save.keeper[mine.char] || 0).lvl;
     const xp = Math.floor((R.time + R.kills * 0.2 + (R.win ? 300 : 0)) * R.mult);
@@ -296,7 +317,7 @@
         <li>Collect the sparks enemies drop. The whole team shares one level bar; on a level-up everyone picks one card (keys <b>1 2 3</b>).</li>
         <li>Weapons leave marks: <b style="color:#ff8a3c">Burn</b>, <b style="color:#7fd8ff">Chill</b>, <b style="color:#ffe45c">Shock</b>, <b style="color:#8be06a">Rot</b>. Two different marks on one enemy cause a <b>reaction</b>. Your friends' marks count too.</li>
         <li>Two or more weapons of the same element make that element stronger.</li>
-        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm (each card tells you which).</li>
+        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
         <li>Stand in a glowing <b>shrine</b> circle to earn a Boon. Defeat red <b>elites</b> for a chest.</li>
         <li>If a friend goes down, stand in their circle to revive them. If everyone is down, the night ends.</li>
         <li>Watch for red flashing rings (an enemy about to charge or explode), blue rings (a Warder is shielding that enemy: kill the Warder first) and purple Dark Bargain circles (optional: a harder 45 seconds for a big reward).</li><li>Survive 12 minutes, then defeat the boss. Win or lose, you keep Embers and experience.</li></ul>`;
@@ -337,10 +358,11 @@
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3' || e.code === 'Digit4') pickCard(+e.code.slice(5) - 1);
     if (e.code === 'KeyR') reroll();
     if (e.code === 'KeyM') muteBtn();
+    if (e.code === 'Tab') { e.preventDefault(); showStats(true); }
     if (e.code === 'KeyQ' && !e.repeat) tryUlt();
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) trySkill(); }
   });
-  addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
+  addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; if (e.code === 'Tab') showStats(false); });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
   function trySkill() {
     const c = View.cur, p = c && c.P.get(myId); if (!p || p.sk || (p.fl & 1) || c.s.pz) return;

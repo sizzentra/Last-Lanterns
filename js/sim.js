@@ -64,7 +64,7 @@ const Sim = (() => {
   }
   const resN = (p, el) => hasBoon(p, 'prism') ? p.weapons.length : (p.res[el] || 0);
   const resMul = (p, el) => { const c = resN(p, el); return c >= 4 ? 1.75 : c >= 3 ? 1.45 : c >= 2 ? 1.2 : 1; };
-  const wd = (p, w, base) => base * p.st.dmg * resMul(p, WEAPONS[w.id].el) * (1 + 0.03 * ((p.meta.m || {})[w.id] || 0)) * (1 + ((p.meta.el || {})[WEAPONS[w.id].el] || 0)) * p.kin;
+  const wd = (p, w, base) => base * p.st.dmg * resMul(p, WEAPONS[w.id].el) * (1 + 0.03 * ((p.meta.m || {})[w.id] || 0)) * (1 + ((p.meta.el || {})[WEAPONS[w.id].el] || 0)) * (1 + 0.2 * (w.aw || 0)) * p.kin;
 
   // ---------- helpers ----------
   function near(x, y, maxR, skip) {
@@ -581,13 +581,13 @@ const Sim = (() => {
     }
     return out;
   }
-  function cards(p) {
+  function cards(p, chest) {
     const out = [], pool = [], n = p.st.cards, own = id => p.charms.some(c => c.id === id);
-    for (const w of p.weapons) { if (w.lvl >= 5 && !w.evo && own(WEAPONS[w.id].charm)) out.push({ k: 'evo', id: w.id }); else if (w.lvl < 5) pool.push({ k: 'w', id: w.id, lvl: w.lvl + 1, wt: 3 }); }
+    for (const w of p.weapons) { if (w.lvl >= 5 && !w.evo && (chest || own(WEAPONS[w.id].charm))) out.push({ k: 'evo', id: w.id, free: !own(WEAPONS[w.id].charm) }); else if (w.evo) pool.push({ k: 'aw', id: w.id, n: (w.aw || 0) + 1, wt: 1.6 }); else if (w.lvl < 5) pool.push({ k: 'w', id: w.id, lvl: w.lvl + 1, wt: 3 }); }
     const lock = p.meta.lock || [];
     if (p.weapons.length < p.wslots) for (const id in WEAPONS) if (!p.weapons.some(w => w.id === id) && lock.indexOf(id) < 0 && !p.banned['w' + id]) pool.push({ k: 'w', id, lvl: 1, wt: p.res[WEAPONS[id].el] ? 2.6 : 2 });
     for (const c of p.charms) if (c.lvl < 5) pool.push({ k: 'c', id: c.id, lvl: c.lvl + 1, wt: 3 });
-    if (p.charms.length < 5) for (const id in CHARMS) if (!own(id) && !p.banned['c' + id]) pool.push({ k: 'c', id, lvl: 1, wt: p.weapons.some(w => WEAPONS[w.id].charm === id) ? 4 : 1.5 });
+    if (p.charms.length < 6) for (const id in CHARMS) if (!own(id) && !p.banned['c' + id]) pool.push({ k: 'c', id, lvl: 1, wt: p.weapons.some(w => WEAPONS[w.id].charm === id) ? 4 : 1.5 });
     sample(pool, n, out);
     // nothing left to level: endless Ascension upgrades that stack forever
     const asc = ASC.slice();
@@ -603,13 +603,14 @@ const Sim = (() => {
     const k = z.picks[pid]; if (!k || k.done) return;
     if (banIdx == null) { if (p.rerolls <= 0) return; p.rerolls--; }
     else { const c = k.cards[banIdx]; if (!c || (c.k !== 'w' && c.k !== 'c') || c.lvl !== 1 || p.banishes <= 0 || z.kind === 'boon') return; p.banishes--; p.banned[c.k + c.id] = 1; }
-    k.cards = z.kind === 'boon' ? boonCards(p) : cards(p); k.rr = p.rerolls; k.bn = p.banishes; k.fresh = true;
+    k.cards = z.kind === 'boon' ? boonCards(p) : cards(p, z.kind === 'chest'); k.rr = p.rerolls; k.bn = p.banishes; k.fresh = true;
   }
   function applyCard(p, c) {
     if (c.k === 'w') { const w = p.weapons.find(w => w.id === c.id); if (w) w.lvl = Math.min(5, w.lvl + 1); else addWeapon(p, c.id); }
     else if (c.k === 'c') { const o = p.charms.find(x => x.id === c.id); if (o) o.lvl = Math.min(5, o.lvl + 1); else p.charms.push({ id: c.id, lvl: 1 }); }
     else if (c.k === 'evo') { const w = p.weapons.find(w => w.id === c.id); if (w && !w.evo) { w.evo = true; G.evos++; fx('r', p.x | 0, p.y | 0, 320, '#ffd27a'); fx('x', p.x | 0, p.y | 0, 160, '#ffd27a'); G.ev.push(['t', p.x | 0, p.y - 50 | 0, 'EVOLVED: ' + WEAPONS[w.id].evo, '#ffd27a']); } }
     else if (c.k === 'boon') p.boons.push(c.id);
+    else if (c.k === 'aw') { const w = p.weapons.find(w => w.id === c.id); if (w) w.aw = (w.aw || 0) + 1; }
     else if (c.k === 'asc') p.asc[c.id] = (p.asc[c.id] || 0) + 1;
     else if (c.k === 'heal') p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.3);
     else G.coins += 25;
@@ -617,7 +618,7 @@ const Sim = (() => {
   }
   function startPause(kind) {
     const picks = {};
-    for (const p of G.players) picks[p.id] = { cards: kind === 'boon' ? boonCards(p) : cards(p), done: false, fresh: true, rr: p.rerolls, bn: p.banishes };
+    for (const p of G.players) picks[p.id] = { cards: kind === 'boon' ? boonCards(p) : cards(p, kind === 'chest'), done: false, fresh: true, rr: p.rerolls, bn: p.banishes };
     G.pause = { kind, picks, t: kind === 'boon' ? 25 : 18 };
   }
   function pick(pid, i) {
@@ -638,6 +639,7 @@ const Sim = (() => {
     if (!G || G.over) return;
     if (G.pause) { G.pause.t -= DT; if (G.pause.t <= 0) for (const id in G.pause.picks) pick(+id, 0); return; }
     G.t += DT; G.txt = 0; G.beams = []; G.orbs = []; G.auras = [];
+    if (((G.t * 30) | 0) % 60 === 0) G.dirty = true; // refresh everyone's stats panel every 2 seconds
     players(); spawner(); enemies(); shotsAndZones();
     G.enemies = G.enemies.filter(e => !e.dead);
     if (G.over) return;
@@ -660,7 +662,7 @@ const Sim = (() => {
     return s;
   }
   function builds() {
-    return G.players.map(p => ({ id: p.id, name: p.name, char: p.char, spd: 190 * p.st.spd, w: p.weapons.map(w => [w.id, w.lvl, w.evo ? 1 : 0]), c: p.charms.map(c => [c.id, c.lvl]), b: p.boons, asc: p.asc, res: hasBoon(p, 'prism') ? Object.fromEntries(Object.keys(p.res).map(e => [e, p.weapons.length])) : p.res, st: { dmg: p.st.dmg, area: p.st.area, cdr: p.st.cdr, crit: p.st.crit, armor: p.st.armor } }));
+    return G.players.map(p => ({ id: p.id, name: p.name, char: p.char, spd: 190 * p.st.spd, w: p.weapons.map(w => [w.id, w.lvl, w.evo ? 1 : 0]), c: p.charms.map(c => [c.id, c.lvl]), b: p.boons, asc: p.asc, full: p.st, dmgBy: p.dmgBy, kills: p.kills, aw: p.weapons.map(w => w.aw || 0), res: hasBoon(p, 'prism') ? Object.fromEntries(Object.keys(p.res).map(e => [e, p.weapons.length])) : p.res, st: { dmg: p.st.dmg, area: p.st.area, cdr: p.st.cdr, crit: p.st.crit, armor: p.st.armor } }));
   }
   function results() {
     const per = {}; for (const p of G.players) per[p.id] = { kills: p.kills, reacts: p.reacts, dmgBy: p.dmgBy, char: p.char };

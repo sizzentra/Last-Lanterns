@@ -26,6 +26,7 @@ When you are done, close the black window.
 - **Q**: your keeper's ultimate, once the team reaches level 6.
 - **R**: reroll your upgrade cards (limited; more are sold at the Hearth).
 - **M**: sound on or off.
+- **Tab** (hold): your stats and the damage each weapon has dealt.
 - **1 / 2 / 3** or click: pick an upgrade card.
 
 ## Playing with a friend

@@ -76,3 +76,6 @@ ul.gain { padding-left: 18px; line-height: 1.7; }
 .curses { margin-top: 8px; display: grid; gap: 3px; font-size: 13px; }
 .curses label { cursor: pointer; }
 #mute { position: fixed; right: 10px; bottom: 10px; z-index: 3; padding: 5px 9px; font-size: 12px; opacity: 0.7; }
+#stats { position: fixed; right: 12px; top: 56px; width: 300px; max-height: 84vh; overflow: auto; background: #151226ee; border: 1px solid #4a3f7a; border-radius: 12px; padding: 14px 16px; z-index: 4; font-size: 13px; }
+#stats td { padding: 3px 4px; font-size: 13px; }
+#build small { opacity: 0.9; }
