@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Last Lanterns</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="build" class="hidden"></div>
+
+<div id="camp" class="screen">
+  <div class="wrap">
+    <h1>Last Lanterns</h1>
+    <p class="sub">The sun has gone out. Carry the last lights into the Gloom.</p>
+    <div class="cols">
+      <section class="panel">
+        <h2>Your account</h2>
+        <label class="row">Name <input id="name" maxlength="14" placeholder="Your name"></label>
+        <div id="account"></div>
+        <h2>Choose your Lanternkeeper</h2>
+        <div id="chars"></div>
+        <div id="charInfo"></div>
+      </section>
+      <section class="panel">
+        <h2>Play</h2>
+        <div id="party"></div>
+        <button id="start" class="big">Start the Night</button>
+        <p id="msg" class="msg"></p>
+        <h2>Camp</h2>
+        <div class="row gap">
+          <button data-modal="hearth">The Hearth<br><small>permanent upgrades</small></button>
+          <button data-modal="goals">Goal Book<br><small>unlocks and rewards</small></button>
+          <button data-modal="mastery">Weapon Mastery<br><small>lasting weapon ranks</small></button>
+          <button data-modal="help">How to play</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="cards" class="overlay hidden"><div class="inner"><h2 id="cardsTitle"></h2><p id="cardsSub"></p><div id="cardList"></div></div></div>
+<div id="end" class="overlay hidden"><div class="inner box"><div id="endBody"></div><button id="endBtn" class="big">Back to camp</button></div></div>
+<div id="modal" class="overlay hidden"><div class="inner box"><div id="modalBody"></div><button id="modalClose">Close</button></div></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/render.js"></script>
+<script src="js/net.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
