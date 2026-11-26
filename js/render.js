@@ -8,7 +8,7 @@ const View = {
     const now = performance.now(), c = { s, P: new Map(), E: new Map(), S: new Map() };
     for (const p of s.P) c.P.set(p[0], { id: p[0], x: p[1], y: p[2], hp: p[3], max: p[4], fl: p[5], rev: p[6], sk: p[7], ul: p[8] });
     for (let i = 0; i < s.E.length; i += 6) c.E.set(s.E[i], { type: s.E[i + 1], x: s.E[i + 2], y: s.E[i + 3], hp: s.E[i + 4], st: s.E[i + 5] });
-    for (let i = 0; i < s.S.length; i += 5) c.S.set(s.S[i], { k: s.S[i + 1], x: s.S[i + 2], y: s.S[i + 3], r: s.S[i + 4] });
+    for (let i = 0; i < s.S.length; i += 6) c.S.set(s.S[i], { k: s.S[i + 1], x: s.S[i + 2], y: s.S[i + 3], r: s.S[i + 4], o: s.S[i + 5] });
     this.prev = this.cur; this.cur = c; this.gap = Math.max(20, Math.min(250, now - this.curT)); this.curT = now;
     if (!this.prev) { const m = c.P.get(myId); if (m) { this.me.x = m.x; this.me.y = m.y; } }
     for (const e of s.ev) {
@@ -61,14 +61,17 @@ const Render = (() => {
 
     // zones
     const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0', '#7fd8ff', 0, 0, '#ffe9a0'];
-    for (const k of [0, 1, 2, 3, 6]) {
-      ctx.fillStyle = zc[k]; ctx.globalAlpha = k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : k === 3 ? 0.1 : 0.2; ctx.beginPath();
-      for (let i = 0; i < Z.length; i += 4) if (Z[i] === k && vis(Z[i + 1], Z[i + 2])) circ(Z[i + 1], Z[i + 2], Z[i + 3]);
+    // your own damaging effects are drawn at full strength, teammates' much fainter, so you can read the fight
+    for (const mine of [false, true]) for (const k of [0, 1, 2, 3, 6]) {
+      const team = k === 2 || k === 6; // healing rings and beacons matter to everyone
+      if (team && !mine) continue;
+      ctx.fillStyle = zc[k]; ctx.globalAlpha = (k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : k === 3 ? 0.1 : 0.2) * (mine ? 1 : 0.4); ctx.beginPath();
+      for (let i = 0; i < Z.length; i += 5) if (Z[i] === k && (team || (Z[i + 4] === myId) === mine) && vis(Z[i + 1], Z[i + 2])) circ(Z[i + 1], Z[i + 2], Z[i + 3]);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
     // planted things: lightning rods and sproutlings
-    for (let i = 0; i < Z.length; i += 4) {
+    for (let i = 0; i < Z.length; i += 5) {
       if ((Z[i] !== 4 && Z[i] !== 5) || !vis(Z[i + 1], Z[i + 2])) continue;
       const x = Z[i + 1], y = Z[i + 2], rod = Z[i] === 4;
       gl(rod ? '#ffe45c' : '#8be06a', x, y, 34);
@@ -125,10 +128,11 @@ const Render = (() => {
 
     // glowing things
     ctx.globalCompositeOperation = 'lighter';
-    const O = s.O; for (let i = 0; i < O.length; i += 2) gl('#a8ff7a', O[i], O[i + 1], 20);
+    const O = s.O; for (let i = 0; i < O.length; i += 3) { ctx.globalAlpha = O[i + 2] === myId ? 1 : 0.4; gl('#a8ff7a', O[i], O[i + 1], 20); }
+    ctx.globalAlpha = 1;
     const B = s.B; ctx.lineCap = 'round';
-    for (let i = 0; i < B.length; i += 4) {
-      const p = c.P.get(myId), ang = B[i + 2] / 100, x = B[i], y = B[i + 1], x2 = x + Math.cos(ang) * B[i + 3], y2 = y + Math.sin(ang) * B[i + 3];
+    for (let i = 0; i < B.length; i += 5) {
+      ctx.globalAlpha = B[i + 4] === myId ? 1 : 0.35; const ang = B[i + 2] / 100, x = B[i], y = B[i + 1], x2 = x + Math.cos(ang) * B[i + 3], y2 = y + Math.sin(ang) * B[i + 3];
       ctx.strokeStyle = '#fff6c822'; ctx.lineWidth = 30; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
       ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
     }
@@ -137,9 +141,11 @@ const Render = (() => {
     for (const [id, o] of c.S) {
       const p = lerp(V.prev && V.prev.S, id, o); if (!vis(p[0], p[1])) continue;
       if (o.k === 3) { late.push(p); continue; }
+      ctx.globalAlpha = o.o === myId ? 1 : 0.4;
       gl(sc[o.k], p[0], p[1], o.k === 2 || o.k === 4 ? o.r * 2.2 : 10 + o.r);
       if (o.k === 2) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p[0], p[1], o.r, now / 60, now / 60 + 3.6); ctx.stroke(); }
     }
+    ctx.globalAlpha = 1;
     // effects
     V.fx = V.fx.filter(f => now - f.t < 900);
     for (const f of V.fx) {

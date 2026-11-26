@@ -65,10 +65,11 @@
     $('diff').innerHTML = `<div class="row" style="margin-top:10px"><button data-d="-1" ${save.diff <= 0 ? 'disabled' : ''}>&#9664;</button><div style="flex:1;text-align:center"><b>${D.name}</b><br><small>enemy health x${D.hp.toFixed(1)}, damage x${D.dmg.toFixed(1)}</small></div><button data-d="1" ${save.diff >= save.maxDiff ? 'disabled' : ''}>&#9654;</button></div>
       <small>${save.diff >= save.maxDiff ? 'Win on ' + D.name + ' to unlock ' + diffOf(save.maxDiff + 1).name + '.' : ''}</small>` +
       (rank >= 3 ? `<div class="curses">${Object.keys(CURSES).map(c => `<label title="${CURSES[c].desc}"><input type="checkbox" data-cz="${c}" ${save.curses.indexOf(c) >= 0 ? 'checked' : ''}> ${CURSES[c].name} <small>${CURSES[c].desc} (+${Math.round(CURSES[c].rew * 100)}%)</small></label>`).join('')}</div>` : '<br><small>Curses (optional challenges for more rewards) unlock at Keeper Rank 3.</small>') +
+      `<label style="display:block;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" data-endless ${save.endless ? 'checked' : ''}> <b>Endless night</b> <small>After the boss falls the night keeps going and gets wilder, with a stronger boss every 4 minutes. Press Esc to end it and keep your rewards.</small></label>` +
       `<div class="embers" style="margin-top:6px">Rewards x${rewardMult(save.diff, save.curses).toFixed(2)}</div>`;
   }
   $('diff').onclick = e => { const d = e.target.dataset; if (d.d) { save.diff += +d.d; persist(); renderDiff(); } };
-  $('diff').onchange = e => { const c = e.target.dataset.cz; if (!c) return; save.curses = save.curses.filter(x => x !== c); if (e.target.checked) save.curses.push(c); persist(); renderDiff(); };
+  $('diff').onchange = e => { if (e.target.dataset.endless != null) { save.endless = e.target.checked; persist(); return; } const c = e.target.dataset.cz; if (!c) return; save.curses = save.curses.filter(x => x !== c); if (e.target.checked) save.curses.push(c); persist(); renderDiff(); };
   $('maps').onclick = e => { const b = e.target.closest('[data-map]'); if (!b || b.disabled) return; save.map = b.dataset.map; persist(); renderParty(); };
   $('name').oninput =e => { save.name = e.target.value; persist(); announce(); };
   $('chars').onclick = e => { const el = e.target.closest('.char'); if (!el || el.classList.contains('locked')) return; save.char = el.dataset.c; persist(); renderCamp(); announce(); };
@@ -123,7 +124,7 @@
   $('start').onclick = () => {
     if (role === 'client') return;
     if (role === 'solo') { myId = 0; party = [me()]; } else { Object.assign(party.find(p => p.id === myId), me()); }
-    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map, diff: Math.min(save.diff, save.maxDiff), curses: save.curses });
+    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map, diff: Math.min(save.diff, save.maxDiff), curses: save.curses, endless: !!save.endless });
     tick = 0; netEv = [];
     Net.broadcast({ t: 'go' });
     enterGame();
@@ -158,6 +159,7 @@
   setInterval(() => { if (inGame && role === 'client' && View.cur) Net.toHost(localInput()); }, 50);
 
   function onSnap(s) {
+    $('pauseBox').classList.toggle('hidden', !s.hd || !inGame); $('pauseMsg').textContent = role === 'client' ? 'The host paused the night.' : 'Take a breath.'; $('resumeBtn').classList.toggle('hidden', role === 'client'); $('endNightBtn').classList.toggle('hidden', role === 'client');
     View.apply(s, myId);
     const me2 = View.cur.P.get(myId);
     if (s.lv > snd.lv) { snd.lv = s.lv; Sfx.play('level'); View.flash = 1; }
@@ -243,7 +245,7 @@
 
   // ---------- end of a night: pay out lasting progress ----------
   function onEnd(R) {
-    if (!inGame) return; inGame = false; showStats(false); Sfx.music(false); Sfx.play(R.win ? 'win' : 'lose'); $('mute').classList.add('hidden');
+    if (!inGame) return; inGame = false; $('pauseBox').classList.add('hidden'); showStats(false); Sfx.music(false); Sfx.play(R.win ? 'win' : 'lose'); $('mute').classList.add('hidden');
     const mine = R.per[myId] || { kills: 0, dmgBy: {}, char: save.char }, gains = [];
     const rank0 = Account.rank(save.xp).lvl, k0 = Account.keeper(save.keeper[mine.char] || 0).lvl;
     const xp = Math.floor((R.time + R.kills * 0.2 + (R.win ? 300 : 0)) * R.mult);
@@ -265,10 +267,18 @@
     const t = `${Math.floor(R.time / 60)}:${String(R.time % 60).padStart(2, '0')}`;
     $('endBody').innerHTML = `<h1 style="font-size:34px">${R.win ? 'Dawn breaks!' : 'The lights went out'}</h1>
       <p class="sub">${R.win ? (MAPS[R.map] || MAPS.fields).boss + ' is defeated.' : 'The Gloom took this one. Everything below is yours to keep.'}</p>
-      <p>Survived <b>${t}</b> &middot; Team level <b>${R.level}</b> &middot; <b>${R.kills}</b> defeated (you: ${mine.kills}) &middot; <b>${R.reactions}</b> reactions &middot; <b>${R.evos}</b> evolutions</p>
+      ${R.bossKills > 1 ? `<p><b>Endless night: ${R.bossKills} bosses defeated.</b></p>` : ''}<p>Survived <b>${t}</b> &middot; Team level <b>${R.level}</b> &middot; <b>${R.kills}</b> defeated (you: ${mine.kills}) &middot; <b>${R.reactions}</b> reactions &middot; <b>${R.evos}</b> evolutions</p>
+      ${teamTable(R)}
       <h2>What you earned</h2><ul class="gain">${gains.map(g => `<li>${g}</li>`).join('')}</ul><p class="embers">You now have ${save.embers} Embers to spend at the Hearth.</p>`;
     $('cards').classList.add('hidden'); $('end').classList.remove('hidden');
   }
+  function teamTable(R) { // everyone's part in the night, biggest damage first
+    const big = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : Math.round(v);
+    const rows = Object.keys(R.per).map(id => { const p = R.per[id], d = Object.entries(p.dmgBy || {}), tot = d.reduce((a, x) => a + x[1], 0), top = d.filter(x => WEAPONS[x[0]]).sort((a, z) => z[1] - a[1])[0]; return { p, tot, top, me: +id === myId }; }).sort((a, z) => z.tot - a.tot);
+    return '<h2>The team</h2><table>' + rows.map(r => `<tr><td><b style="color:${CHARS[r.p.char].c}">&#9679;</b> <b>${esc(r.p.name || 'Keeper')}</b>${r.me ? ' (you)' : ''}<br><small>${CHARS[r.p.char].name}</small></td><td>${big(r.tot)} damage<br><small>${r.p.kills} defeated &middot; ${r.p.evos || 0} evolved</small></td><td><small>Best weapon</small><br>${r.top ? WEAPONS[r.top[0]].name + ' (' + big(r.top[1]) + ')' : '-'}</td></tr>`).join('') + '</table>';
+  }
+  $('resumeBtn').onclick = () => Sim.hold(false);
+  $('endNightBtn').onclick = () => Sim.endNight();
   $('endBtn').onclick = () => { $('end').classList.add('hidden'); showCamp(); announce(); };
 
   // ---------- camp pages ----------
@@ -317,7 +327,7 @@
         <li>Collect the sparks enemies drop. The whole team shares one level bar; on a level-up everyone picks one card (keys <b>1 2 3</b>).</li>
         <li>Weapons leave marks: <b style="color:#ff8a3c">Burn</b>, <b style="color:#7fd8ff">Chill</b>, <b style="color:#ffe45c">Shock</b>, <b style="color:#8be06a">Rot</b>. Two different marks on one enemy cause a <b>reaction</b>. Your friends' marks count too.</li>
         <li>Two or more weapons of the same element make that element stronger.</li>
-        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
+        <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm. The list on the left of the screen shows what each weapon still needs. An <b>elite chest</b> evolves a level 5 weapon even without the charm, and evolved weapons can then be <b>awakened</b> again and again.</li><li><b>Esc</b> pauses (the host pauses for everyone) and lets you end the night early with your rewards.</li><li>Hold <b>Tab</b> to see all your stats and how much damage each weapon has done.</li>
         <li>Stand in a glowing <b>shrine</b> circle to earn a Boon. Defeat red <b>elites</b> for a chest.</li>
         <li>If a friend goes down, stand in their circle to revive them. If everyone is down, the night ends.</li>
         <li>Watch for red flashing rings (an enemy about to charge or explode), blue rings (a Warder is shielding that enemy: kill the Warder first) and purple Dark Bargain circles (optional: a harder 45 seconds for a big reward).</li><li>Survive 12 minutes, then defeat the boss. Win or lose, you keep Embers and experience.</li></ul>`;
@@ -359,6 +369,7 @@
     if (e.code === 'KeyR') reroll();
     if (e.code === 'KeyM') muteBtn();
     if (e.code === 'Tab') { e.preventDefault(); showStats(true); }
+    if (e.code === 'Escape' && role !== 'client' && Sim.G && !Sim.G.pause) Sim.hold(!Sim.G.hold);
     if (e.code === 'KeyQ' && !e.repeat) tryUlt();
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) trySkill(); }
   });
@@ -379,7 +390,7 @@
     const c = View.cur, p = c.P.get(myId), m = View.me;
     if (inGame && p) {
       if (p.fl & 1) { m.x = p.x; m.y = p.y; }
-      else if (!c.s.pz) {
+      else if (!c.s.pz && !c.s.hd) {
         let dx = (keys.r ? 1 : 0) - (keys.l ? 1 : 0), dy = (keys.d ? 1 : 0) - (keys.u ? 1 : 0);
         if (dx || dy) { const l = Math.hypot(dx, dy); m.fx = dx / l; m.fy = dy / l; }
         const b = View.builds.find(x => x.id === myId), spd = b ? b.spd : 190;

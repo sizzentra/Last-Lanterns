@@ -27,6 +27,7 @@ When you are done, close the black window.
 - **R**: reroll your upgrade cards (limited; more are sold at the Hearth).
 - **M**: sound on or off.
 - **Tab** (hold): your stats and the damage each weapon has dealt.
+- **Esc**: pause (the host pauses for everyone) or end the night early and keep your rewards.
 - **1 / 2 / 3** or click: pick an upgrade card.
 
 ## Playing with a friend
