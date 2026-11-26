@@ -45,13 +45,13 @@ const Render = (() => {
     const meS = c.P.get(myId), down = meS && (meS.fl & 1);
     const cx = meS ? V.me.x : 0, cy = meS ? V.me.y : 0;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-    ctx.fillStyle = '#0b0a14'; ctx.fillRect(0, 0, W, H);
+    const MP = MAPS[s.mp] || MAPS.fields; ctx.fillStyle = MP.bg; ctx.fillRect(0, 0, W, H);
     const shk = V.shake > 0.3 ? V.shake : 0; V.shake *= 0.86;
     ctx.setTransform(scale, 0, 0, scale, W / 2 - cx * scale + (Math.random() - 0.5) * shk, H / 2 - cy * scale + (Math.random() - 0.5) * shk);
     const vw = W / scale / 2 + 60, vh = H / scale / 2 + 60, vis = (x, y) => Math.abs(x - cx) < vw && Math.abs(y - cy) < vh;
 
     // ground specks so movement is visible
-    ctx.fillStyle = '#1d1a30';
+    ctx.fillStyle = MP.speck;
     const G0 = 110;
     for (let gx = Math.floor((cx - vw) / G0); gx <= (cx + vw) / G0; gx++) for (let gy = Math.floor((cy - vh) / G0); gy <= (cy + vh) / G0; gy++) {
       const h = Math.abs(Math.sin(gx * 127.1 + gy * 311.7) * 43758.5) % 1;
@@ -83,6 +83,14 @@ const Render = (() => {
       ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(x, y, r, -1.57, -1.57 + pr / 100 * 6.2832); ctx.stroke();
       ctx.fillStyle = '#ffd27a'; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center'; ctx.fillText('Shrine: stand here together', x, y - r - 12);
     }
+    if (s.al) { // Dark Bargain altar
+      const [x, y, r, pr] = s.al;
+      gl('#b070ff', x, y, r * 1.4);
+      ctx.strokeStyle = '#b070ff66'; ctx.lineWidth = 3; ctx.beginPath(); circ(x, y, r); ctx.stroke();
+      ctx.strokeStyle = '#d0a8ff'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(x, y, r, -1.57, -1.57 + pr / 100 * 6.2832); ctx.stroke();
+      ctx.fillStyle = '#d0a8ff'; ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText('Dark Bargain: stand here to accept', x, y - r - 28); ctx.font = '13px system-ui'; ctx.fillText('45 seconds of a much bigger swarm, then a big reward', x, y - r - 10);
+    }
     // sparks (xp)
     for (const g of V.gems.values()) { if (!vis(g.x, g.y)) continue; ctx.fillStyle = g.v >= 20 ? '#ff9de0' : g.v >= 5 ? '#9df0ff' : '#ffe9a0'; const z = g.v >= 20 ? 5 : g.v >= 5 ? 4 : 3; ctx.fillRect(g.x - z, g.y - z, z * 2, z * 2); }
     // pickups
@@ -95,11 +103,11 @@ const Render = (() => {
     }
 
     // enemies, batched by type
-    const byT = [[], [], [], [], [], []];
+    const byT = ENEMIES.map(() => []);
     for (const [id, e] of c.E) { const p = lerp(V.prev && V.prev.E, id, e); if (vis(p[0], p[1])) byT[e.type].push(e, p[0], p[1]); }
-    for (let t = 0; t < 6; t++) {
+    for (let t = 0; t < ENEMIES.length; t++) {
       const L = byT[t], T = ENEMIES[t]; if (!L.length) continue;
-      if (t >= 4) for (let i = 0; i < L.length; i += 3) gl(t === 5 ? '#b9a8ff' : '#ff5a4a', L[i + 1], L[i + 2], T.r * 2.6);
+      if (T.big) for (let i = 0; i < L.length; i += 3) gl(t === 5 ? '#b9a8ff' : t === 11 ? '#b070ff' : '#ff5a4a', L[i + 1], L[i + 2], T.r * 2.6);
       ctx.fillStyle = T.c; ctx.beginPath(); for (let i = 0; i < L.length; i += 3) circ(L[i + 1], L[i + 2], T.r); ctx.fill();
       ctx.fillStyle = t === 5 ? '#200030' : '#ffdf8a'; ctx.beginPath();
       for (let i = 0; i < L.length; i += 3) { const q = T.r * 0.38; circ(L[i + 1] - q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); circ(L[i + 1] + q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); }
@@ -109,8 +117,9 @@ const Render = (() => {
         const e = L[i], x = L[i + 1], y = L[i + 2];
         if (e.st & 16) { ctx.fillStyle = '#cfefffaa'; ctx.beginPath(); circ(x, y, T.r + 2); ctx.fill(); }
         else if (e.st & 15) { ctx.strokeStyle = MARKC[e.st & 1 ? 0 : e.st & 2 ? 1 : e.st & 4 ? 2 : 3]; ctx.beginPath(); circ(x, y, T.r + 2); ctx.stroke(); }
+        if (e.st & 64) { ctx.strokeStyle = '#6bb8ff'; ctx.beginPath(); circ(x, y, T.r + 5); ctx.stroke(); }
         if (e.st & 32) { ctx.strokeStyle = '#ff3030'; ctx.lineWidth = 5; ctx.beginPath(); circ(x, y, T.r + 14 + 8 * Math.sin(now / 50)); ctx.stroke(); ctx.lineWidth = 2.5; }
-        if (t === 4) { ctx.fillStyle = '#400'; ctx.fillRect(x - 28, y - T.r - 12, 56, 5); ctx.fillStyle = '#ff5a4a'; ctx.fillRect(x - 28, y - T.r - 12, 56 * e.hp / 100, 5); }
+        if (T.big && t !== 5) { ctx.fillStyle = '#400'; ctx.fillRect(x - 28, y - T.r - 12, 56, 5); ctx.fillStyle = '#ff5a4a'; ctx.fillRect(x - 28, y - T.r - 12, 56 * e.hp / 100, 5); }
       }
     }
 
@@ -182,7 +191,7 @@ const Render = (() => {
     const tm = Math.floor(s.tm); ctx.fillText(Math.floor(tm / 60) + ':' + String(tm % 60).padStart(2, '0'), W / 2, 44);
     ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'left'; ctx.fillText('Level ' + s.lv, 14, 36);
     ctx.textAlign = 'right'; ctx.fillText(s.k + ' defeated', W - 14, 36); ctx.textAlign = 'center';
-    if (s.bo) { const bw = Math.min(620, W * 0.6); ctx.fillStyle = '#2a0f3a'; ctx.fillRect(W / 2 - bw / 2, 58, bw, 14); ctx.fillStyle = '#c9a8ff'; ctx.fillRect(W / 2 - bw / 2, 58, bw * s.bo / 1000, 14); ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.fillText('The Hollow Stag', W / 2, 88); }
+    if (s.bo) { const bw = Math.min(620, W * 0.6); ctx.fillStyle = '#2a0f3a'; ctx.fillRect(W / 2 - bw / 2, 58, bw, 14); ctx.fillStyle = '#c9a8ff'; ctx.fillRect(W / 2 - bw / 2, 58, bw * s.bo / 1000, 14); ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.fillText(MP.boss, W / 2, 88); }
     if (meS) {
       const rdy = !meS.sk, b = V.builds.find(x => x.id === myId), C = b && CHARS[b.char];
       if (C) { ctx.fillStyle = rdy ? C.c : '#444'; ctx.beginPath(); circ(W / 2 - 60, H - 46, 22); ctx.fill(); ctx.fillStyle = rdy ? '#111' : '#bbb'; ctx.font = 'bold 13px system-ui'; ctx.fillText(rdy ? 'SPACE' : (meS.sk / 10).toFixed(0), W / 2 - 60, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.skill, W / 2 - 60, H - 10);
@@ -192,6 +201,7 @@ const Render = (() => {
         ctx.fillStyle = ur ? '#111' : '#999'; ctx.fillText(meS.ul < 0 ? 'Lv 6' : ur ? 'Q' : meS.ul, ux, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.ult, ux, H - 10); }
       if (down) { ctx.fillStyle = '#fff'; ctx.font = 'bold 26px system-ui'; ctx.fillText('You are down. A friend can revive you.', W / 2, H / 2 - 110); }
     }
+    if (s.cu) { ctx.fillStyle = '#d0a8ff'; ctx.font = 'bold 18px system-ui'; ctx.fillText('Dark Bargain: survive ' + s.cu + 's', W / 2, s.bo ? 112 : 72); }
     if (s.sh) { // arrow to the shrine when it is off screen
       const dx = s.sh[0] - cx, dy = s.sh[1] - cy;
       if (Math.abs(dx) * scale > W / 2 - 40 || Math.abs(dy) * scale > H / 2 - 40) {

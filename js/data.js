@@ -102,9 +102,20 @@ const ENEMIES = [
   { id: 'skitter', hp: 9,    spd: 128, dmg: 5,  r: 8,  xp: 1,  c: '#b05a7a' },
   { id: 'husk',    hp: 120,  spd: 42,  dmg: 14, r: 18, xp: 5,  c: '#4f6f6a' },
   { id: 'spitter', hp: 36,   spd: 58,  dmg: 9,  r: 12, xp: 3,  c: '#8a6a3a' },
-  { id: 'elite',   hp: 700,  spd: 58,  dmg: 22, r: 30, xp: 25, c: '#c0392b' },
-  { id: 'boss',    hp: 7000, spd: 70,  dmg: 30, r: 48, xp: 0,  c: '#e8e0ff' },
+  { id: 'elite',   hp: 1300, spd: 58,  dmg: 22, r: 30, xp: 25, c: '#c0392b', big: true, chest: true },
+  { id: 'boss',    hp: 28000, spd: 70,  dmg: 30, r: 48, xp: 0,  c: '#e8e0ff', big: true },
+  { id: 'bloat',   hp: 70,   spd: 50,  dmg: 10, r: 16, xp: 3,  c: '#7a5a9a' },   // splits into mites when it dies
+  { id: 'mite',    hp: 8,    spd: 120, dmg: 4,  r: 7,  xp: 1,  c: '#9a7aba' },
+  { id: 'warder',  hp: 160,  spd: 44,  dmg: 10, r: 17, xp: 6,  c: '#3f6fa8' },   // shields the enemies around it
+  { id: 'ram',     hp: 60,   spd: 70,  dmg: 16, r: 14, xp: 4,  c: '#a85a3f' },   // winds up, then charges
+  { id: 'wisp',    hp: 14,   spd: 150, dmg: 20, r: 9,  xp: 2,  c: '#ff9a3c' },   // rushes in and explodes
+  { id: 'warden',  hp: 5000, spd: 60,  dmg: 24, r: 38, xp: 60, c: '#8a4fd0', big: true, chest: true }, // mini-boss
 ];
+
+const MAPS = {
+  fields: { name: 'Hollow Fields',   desc: 'Open ground. The Hollow Stag waits at the end of the night.', boss: 'The Hollow Stag', bg: '#0b0a14', speck: '#1d1a30' },
+  mire:   { name: 'The Sunken Mire', desc: 'More exploding wisps and spitters. The Drowned Bell tolls at the end.', boss: 'The Drowned Bell', bg: '#06120f', speck: '#16332b', goal: 'win' },
+};
 
 // The Hearth: permanent upgrades bought with Embers.
 const HEARTH = {
@@ -134,13 +145,16 @@ const GOALS = {
   evo1:    { name: 'Metamorphosis',   desc: 'Evolve a weapon',                  reward: 'Unlocks the weapon Falling Star', test: r => r.evos >= 1 },
   kills1k: { name: 'Clear the Dark',  desc: 'Defeat 1,000 enemies in one run',  reward: 'Unlocks the weapon Rime Aura', test: r => r.kills >= 1000 },
   min8:    { name: 'Long Night',      desc: 'Survive 8 minutes',                reward: 'Unlocks the weapon Sproutling', test: r => r.time >= 480 },
-  win:     { name: 'First Dawn',      desc: 'Defeat the Hollow Stag',           reward: '300 Embers and the weapon Judgement', embers: 300, test: r => r.win },
+  win:     { name: 'First Dawn',      desc: 'Win a night',                      reward: '300 Embers and the weapon Judgement, and the Sunken Mire map', embers: 300, test: r => r.win },
   coop:    { name: 'Better Together', desc: 'Survive 3 minutes with a friend',       reward: '100 Embers', embers: 100, test: r => r.players >= 2 && r.time >= 180 },
   evo3:    { name: 'Walking Storm',   desc: 'Evolve 3 weapons in one run',      reward: '250 Embers', embers: 250, test: r => r.evos >= 3 },
   lvl20:   { name: 'Burning Bright',  desc: 'Reach level 20 in a run',          reward: 'Unlocks the weapon Ball Lightning', test: r => r.level >= 20 },
   boon3:   { name: 'Blessed',         desc: 'Hold 3 Boons in one run',          reward: 'Unlocks the weapon Halo', test: r => r.boons >= 3 },
   react500: { name: 'Mad Science',    desc: 'Cause 500 reactions in one run',   reward: '250 Embers', embers: 250, test: r => r.reactions >= 500 },
   lvl40:   { name: 'Godlight',        desc: 'Reach level 40 in a run',          reward: '400 Embers', embers: 400, test: r => r.level >= 40 },
+  bargain: { name: 'A Deal is a Deal', desc: 'Accept and survive a Dark Bargain',  reward: '150 Embers', embers: 150, test: r => r.bargains >= 1 },
+  warden:  { name: 'Warden Breaker',  desc: 'Defeat a Gloom Warden',             reward: '150 Embers', embers: 150, test: r => r.wardens >= 1 },
+  win2:    { name: 'Silence the Bell', desc: 'Defeat the Drowned Bell in the Sunken Mire', reward: '500 Embers', embers: 500, test: r => r.win && r.map === 'mire' },
 };
 
 // Account maths shared by menus and the game.

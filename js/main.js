@@ -3,7 +3,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const SAVE_KEY = 'lastlanterns.save.v1';
-  const blank = () => ({ name: '', embers: 0, xp: 0, hearth: {}, keeper: {}, mastery: {}, goals: {}, char: 'wick', runs: 0, wins: 0 });
+  const blank = () => ({ name: '', embers: 0, xp: 0, hearth: {}, keeper: {}, mastery: {}, goals: {}, char: 'wick', map: 'fields', runs: 0, wins: 0 });
   let save = blank();
   try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) save = Object.assign(blank(), s); } catch (e) { /* no save yet */ }
   const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* storage blocked */ } };
@@ -47,12 +47,16 @@
         `</div><div class="row" style="margin-top:8px"><button id="leaveBtn">Leave room</button></div>`;
     }
     $('party').innerHTML = h;
+    if (!MAPS[save.map] || (MAPS[save.map].goal && !save.goals[MAPS[save.map].goal])) save.map = 'fields';
+    $('maps').innerHTML = role === 'client' ? '<small>The host chooses the map.</small>' : Object.keys(MAPS).map(m => { const M = MAPS[m], ok = !M.goal || save.goals[M.goal];
+      return `<button data-map="${m}" class="${m === save.map ? 'sel' : ''}" ${ok ? '' : 'disabled'}><b>${M.name}</b>${ok ? M.desc : 'Locked: ' + GOALS[M.goal].desc.toLowerCase() + ' first.'}</button>`; }).join('');
     const st = $('start'); st.disabled = role === 'client'; st.textContent = role === 'client' ? 'Waiting for the host to start' : role === 'host' ? `Start the Night (${party.length} player${party.length > 1 ? 's' : ''})` : 'Start the Night';
     if ($('hostBtn')) $('hostBtn').onclick = hostRoom;
     if ($('joinBtn')) $('joinBtn').onclick = joinRoom;
     if ($('leaveBtn')) $('leaveBtn').onclick = leaveRoom;
   }
-  $('name').oninput = e => { save.name = e.target.value; persist(); announce(); };
+  $('maps').onclick = e => { const b = e.target.closest('[data-map]'); if (!b || b.disabled) return; save.map = b.dataset.map; persist(); renderParty(); };
+  $('name').oninput =e => { save.name = e.target.value; persist(); announce(); };
   $('chars').onclick = e => { const el = e.target.closest('.char'); if (!el || el.classList.contains('locked')) return; save.char = el.dataset.c; persist(); renderCamp(); announce(); };
   function announce() { // tell the room who we are
     if (role === 'client') Net.toHost(Object.assign({ t: 'h' }, me()));
@@ -105,7 +109,7 @@
   $('start').onclick = () => {
     if (role === 'client') return;
     if (role === 'solo') { myId = 0; party = [me()]; } else { Object.assign(party.find(p => p.id === myId), me()); }
-    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime });
+    Sim.newGame(party.map(p => ({ id: p.id, name: p.name, char: p.char, meta: p.meta })), { bossTime, map: save.map });
     tick = 0; netEv = [];
     Net.broadcast({ t: 'go' });
     enterGame();
@@ -213,7 +217,7 @@
     save.embers += embers; persist();
     const t = `${Math.floor(R.time / 60)}:${String(R.time % 60).padStart(2, '0')}`;
     $('endBody').innerHTML = `<h1 style="font-size:34px">${R.win ? 'Dawn breaks!' : 'The lights went out'}</h1>
-      <p class="sub">${R.win ? 'The Hollow Stag is defeated.' : 'The Gloom took this one. Everything below is yours to keep.'}</p>
+      <p class="sub">${R.win ? (MAPS[R.map] || MAPS.fields).boss + ' is defeated.' : 'The Gloom took this one. Everything below is yours to keep.'}</p>
       <p>Survived <b>${t}</b> &middot; Team level <b>${R.level}</b> &middot; <b>${R.kills}</b> defeated (you: ${mine.kills}) &middot; <b>${R.reactions}</b> reactions &middot; <b>${R.evos}</b> evolutions</p>
       <h2>What you earned</h2><ul class="gain">${gains.map(g => `<li>${g}</li>`).join('')}</ul><p class="embers">You now have ${save.embers} Embers to spend at the Hearth.</p>`;
     $('cards').classList.add('hidden'); $('end').classList.remove('hidden');
@@ -244,7 +248,7 @@
         <li>A level 5 weapon <b>evolves</b> if you also hold its partner charm (each card tells you which).</li>
         <li>Stand in a glowing <b>shrine</b> circle to earn a Boon. Defeat red <b>elites</b> for a chest.</li>
         <li>If a friend goes down, stand in their circle to revive them. If everyone is down, the night ends.</li>
-        <li>Survive 12 minutes, then defeat the Hollow Stag. Win or lose, you keep Embers and experience.</li></ul>`;
+        <li>Watch for red flashing rings (an enemy about to charge or explode), blue rings (a Warder is shielding that enemy: kill the Warder first) and purple Dark Bargain circles (optional: a harder 45 seconds for a big reward).</li><li>Survive 12 minutes, then defeat the boss. Win or lose, you keep Embers and experience.</li></ul>`;
     },
   };
   let page = null;
