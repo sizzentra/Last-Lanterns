@@ -6,7 +6,7 @@ const View = {
   reset() { this.cur = this.prev = null; this.gems.clear(); this.fx = []; this.builds = []; this.me = { x: 0, y: 0, fx: 1, fy: 0 }; },
   apply(s, myId) {
     const now = performance.now(), c = { s, P: new Map(), E: new Map(), S: new Map() };
-    for (const p of s.P) c.P.set(p[0], { id: p[0], x: p[1], y: p[2], hp: p[3], max: p[4], fl: p[5], rev: p[6], sk: p[7] });
+    for (const p of s.P) c.P.set(p[0], { id: p[0], x: p[1], y: p[2], hp: p[3], max: p[4], fl: p[5], rev: p[6], sk: p[7], ul: p[8] });
     for (let i = 0; i < s.E.length; i += 6) c.E.set(s.E[i], { type: s.E[i + 1], x: s.E[i + 2], y: s.E[i + 3], hp: s.E[i + 4], st: s.E[i + 5] });
     for (let i = 0; i < s.S.length; i += 5) c.S.set(s.S[i], { k: s.S[i + 1], x: s.S[i + 2], y: s.S[i + 3], r: s.S[i + 4] });
     this.prev = this.cur; this.cur = c; this.gap = Math.max(20, Math.min(250, now - this.curT)); this.curT = now;
@@ -14,7 +14,10 @@ const View = {
     for (const e of s.ev) {
       if (e[0] === 'g+') this.gems.set(e[1], { x: e[2], y: e[3], v: e[4] });
       else if (e[0] === 'g-') this.gems.delete(e[1]);
-      else if (this.fx.length < 260) this.fx.push({ e, t: now });
+      else if (this.fx.length < 260) {
+        this.fx.push({ e, t: now });
+        if ((e[0] === 'x' && e[3] >= 95) || (e[0] === 'r' && e[3] >= 240)) this.shake = Math.min(14, (this.shake || 0) + 5); // big hits shake the screen
+      }
     }
   },
 };
@@ -43,7 +46,8 @@ const Render = (() => {
     const cx = meS ? V.me.x : 0, cy = meS ? V.me.y : 0;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.fillStyle = '#0b0a14'; ctx.fillRect(0, 0, W, H);
-    ctx.setTransform(scale, 0, 0, scale, W / 2 - cx * scale, H / 2 - cy * scale);
+    const shk = V.shake > 0.3 ? V.shake : 0; V.shake *= 0.86;
+    ctx.setTransform(scale, 0, 0, scale, W / 2 - cx * scale + (Math.random() - 0.5) * shk, H / 2 - cy * scale + (Math.random() - 0.5) * shk);
     const vw = W / scale / 2 + 60, vh = H / scale / 2 + 60, vis = (x, y) => Math.abs(x - cx) < vw && Math.abs(y - cy) < vh;
 
     // ground specks so movement is visible
@@ -56,13 +60,21 @@ const Render = (() => {
     ctx.strokeStyle = '#3a2f66'; ctx.lineWidth = 6; ctx.strokeRect(-Sim.WORLD, -Sim.WORLD, Sim.WORLD * 2, Sim.WORLD * 2);
 
     // zones
-    const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0'];
-    for (let k = 0; k < 3; k++) {
-      ctx.fillStyle = zc[k]; ctx.globalAlpha = k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : 0.2; ctx.beginPath();
+    const Z = s.Z, zc = ['#ff7a2a', '#5fbf45', '#9dffb0', '#7fd8ff'];
+    for (let k = 0; k < 4; k++) {
+      ctx.fillStyle = zc[k]; ctx.globalAlpha = k === 2 ? 0.16 + 0.05 * Math.sin(now / 150) : k === 3 ? 0.1 : 0.2; ctx.beginPath();
       for (let i = 0; i < Z.length; i += 4) if (Z[i] === k && vis(Z[i + 1], Z[i + 2])) circ(Z[i + 1], Z[i + 2], Z[i + 3]);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    // planted things: lightning rods and sproutlings
+    for (let i = 0; i < Z.length; i += 4) {
+      if (Z[i] < 4 || !vis(Z[i + 1], Z[i + 2])) continue;
+      const x = Z[i + 1], y = Z[i + 2], rod = Z[i] === 4;
+      gl(rod ? '#ffe45c' : '#8be06a', x, y, 34);
+      ctx.fillStyle = rod ? '#ffe45c' : '#8be06a';
+      if (rod) ctx.fillRect(x - 3, y - 24, 6, 28); else { ctx.beginPath(); circ(x, y, 9); ctx.fill(); ctx.fillStyle = '#eaffd0'; ctx.beginPath(); circ(x, y - 4, 4); ctx.fill(); }
+    }
     // shrine
     if (s.sh) {
       const [x, y, r, pr] = s.sh;
@@ -111,12 +123,12 @@ const Render = (() => {
       ctx.strokeStyle = '#fff6c822'; ctx.lineWidth = 30; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
       ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
     }
-    const sc = ['#ff8a3c', '#7fd8ff', '#ffffff'];
+    const sc = ['#ff8a3c', '#7fd8ff', '#ffffff', '', '#ffe45c', '#8be06a'];
     const late = [];
     for (const [id, o] of c.S) {
       const p = lerp(V.prev && V.prev.S, id, o); if (!vis(p[0], p[1])) continue;
       if (o.k === 3) { late.push(p); continue; }
-      gl(sc[o.k], p[0], p[1], o.k === 2 ? o.r * 2.2 : 16);
+      gl(sc[o.k], p[0], p[1], o.k === 2 || o.k === 4 ? o.r * 2.2 : 10 + o.r);
       if (o.k === 2) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p[0], p[1], o.r, now / 60, now / 60 + 3.6); ctx.stroke(); }
     }
     // effects
@@ -144,8 +156,9 @@ const Render = (() => {
         continue;
       }
       ctx.globalCompositeOperation = 'lighter';
-      gl(C.c, x, y, 120); if (p.fl & 2) gl('#ffffff', x, y, 60 + 10 * Math.sin(now / 60));
+      gl(C.c, x, y, p.fl & 16 ? 230 + 20 * Math.sin(now / 70) : 120); if (p.fl & 2) gl('#ffffff', x, y, 60 + 10 * Math.sin(now / 60));
       ctx.globalCompositeOperation = 'source-over';
+      if (p.fl & 8) { ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = 3; ctx.beginPath(); circ(x, y, 21); ctx.stroke(); }
       ctx.fillStyle = '#1b1830'; ctx.beginPath(); circ(x, y, 14); ctx.fill();
       ctx.fillStyle = C.c; ctx.beginPath(); circ(x, y, 10); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.beginPath(); circ(x, y, 4.5); ctx.fill();
@@ -172,7 +185,11 @@ const Render = (() => {
     if (s.bo) { const bw = Math.min(620, W * 0.6); ctx.fillStyle = '#2a0f3a'; ctx.fillRect(W / 2 - bw / 2, 58, bw, 14); ctx.fillStyle = '#c9a8ff'; ctx.fillRect(W / 2 - bw / 2, 58, bw * s.bo / 1000, 14); ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui'; ctx.fillText('The Hollow Stag', W / 2, 88); }
     if (meS) {
       const rdy = !meS.sk, b = V.builds.find(x => x.id === myId), C = b && CHARS[b.char];
-      if (C) { ctx.fillStyle = rdy ? C.c : '#444'; ctx.beginPath(); circ(W / 2, H - 46, 22); ctx.fill(); ctx.fillStyle = rdy ? '#111' : '#bbb'; ctx.font = 'bold 13px system-ui'; ctx.fillText(rdy ? 'SPACE' : (meS.sk / 10).toFixed(0), W / 2, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.skill, W / 2, H - 10); }
+      if (C) { ctx.fillStyle = rdy ? C.c : '#444'; ctx.beginPath(); circ(W / 2 - 60, H - 46, 22); ctx.fill(); ctx.fillStyle = rdy ? '#111' : '#bbb'; ctx.font = 'bold 13px system-ui'; ctx.fillText(rdy ? 'SPACE' : (meS.sk / 10).toFixed(0), W / 2 - 60, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.skill, W / 2 - 60, H - 10);
+        const ur = meS.ul === 0, ux = W / 2 + 60;
+        ctx.fillStyle = ur ? '#ffd27a' : '#333'; ctx.beginPath(); circ(ux, H - 46, 22); ctx.fill();
+        if (ur) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 + Math.sin(now / 120); ctx.beginPath(); circ(ux, H - 46, 25); ctx.stroke(); }
+        ctx.fillStyle = ur ? '#111' : '#999'; ctx.fillText(meS.ul < 0 ? 'Lv 6' : ur ? 'Q' : meS.ul, ux, H - 41); ctx.fillStyle = '#ccc'; ctx.fillText(C.ult, ux, H - 10); }
       if (down) { ctx.fillStyle = '#fff'; ctx.font = 'bold 26px system-ui'; ctx.fillText('You are down. A friend can revive you.', W / 2, H / 2 - 110); }
     }
     if (s.sh) { // arrow to the shrine when it is off screen

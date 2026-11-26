@@ -186,8 +186,8 @@ All progress is saved in your own browser, and each player keeps their own accou
 
 ## 10. Build order
 
-1. **First playable [v1]:** everything tagged above.
-2. **Depth pass:** remaining 2 reactions, rerolls/banish/hold, 10 more weapons, fusions, ultimates, 30 more boons with rarities.
+1. **First playable [v1]:** everything tagged above. *Done.*
+2. **Depth pass:** *Done so far:* all 6 reactions, 10 more weapons (20 total, 4 per element, 6 of them unlocked by goals), a 4-weapon Resonance tier (+75%), ultimates on Q for all four keepers, rerolls and banish, 17 more Boons in three rarities (31 total), endless Ascension upgrades once everything is maxed, screen shake, and 3 new Hearth upgrades. *Still to do:* weapon fusions, "hold a card", alternate evolutions.
 3. **World pass:** new enemy behaviours, mini-bosses, 3 more maps and bosses, Dark Bargains and other events.
 4. **Long-game pass:** difficulties and Depths, Curses, keeper talent trees, Hearth keystones, Heirlooms and the forge, camp rebuilding, Codex, full Goal Book, the 4 unlockable keepers, save export/import.
 5. **Polish pass:** sound and music, screen shake and juice, touch controls, a single share link on a free host.

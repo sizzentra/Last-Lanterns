@@ -5,13 +5,15 @@ const Sim = (() => {
   let G = null, uid = 1;
   const rnd = (a, b) => a + Math.random() * (b - a);
   const need = l => Math.floor(4 + 3 * l + 0.22 * l * l);
-  const SHOT = { dart: 0, hail: 1, sickle: 2, spit: 3 };
-  const ZONE = { fire: 0, thorn: 1, heal: 2 };
+  const SHOT = { dart: 0, hail: 1, sickle: 2, spit: 3, orb: 4, seed: 5 };
+  const ZONE = { fire: 0, thorn: 1, heal: 2, aura: 3, rod: 4, sprout: 5 };
+  const PAIRS = [['burn', 'chill', 'steam'], ['chill', 'shock', 'shatter'], ['burn', 'rot', 'wildfire'], ['shock', 'rot', 'spore'], ['burn', 'shock', 'overload'], ['chill', 'rot', 'frostbite']];
+  const ASC = ['dmg', 'area', 'cdr', 'hp', 'crit'];
   const PICK = { heart: 0, magnet: 1, coin: 2, chest: 3 };
 
   function newGame(defs, opts = {}) {
     uid = 1;
-    G = { t: 0, players: [], enemies: [], shots: [], zones: [], gems: new Map(), pickups: [], ev: [], beams: [], orbs: [],
+    G = { t: 0, players: [], enemies: [], shots: [], zones: [], gems: new Map(), pickups: [], ev: [], beams: [], orbs: [], auras: [],
       level: 1, xp: 0, xpNeed: need(1), pause: null, pendLv: 0, pendChest: 0, pendBoon: 0,
       shrine: null, nextShrine: 70, nextElite: 110, boss: null, bossTime: opts.bossTime || 720, over: null,
       acc: 0, coins: 0, kills: 0, shrines: 0, reactions: 0, evos: 0, dirty: true, dotT: 0, txt: 0, n: defs.length };
@@ -19,7 +21,9 @@ const Sim = (() => {
       const a = i / defs.length * 6.283, off = defs.length > 1 ? 50 : 0;
       const p = { id: d.id, name: d.name, char: d.char, meta: d.meta || {}, x: Math.cos(a) * off, y: Math.sin(a) * off, fx: 1, fy: 0,
         hp: 1, weapons: [], charms: [], boons: [], down: false, downT: 0, rev: 0, deaths: 0, inv: 0, skillT: 0, dashT: 0,
-        still: 0, kin: 1, kills: 0, reacts: 0, dmgBy: {}, usedSecond: false, mv: false };
+        still: 0, kin: 1, kills: 0, reacts: 0, dmgBy: {}, usedSecond: false, mv: false,
+        ward: 0, ultT: 0, ultCd: 0, ultAcc: 0, asc: {}, banned: {} };
+      p.rerolls = 1 + ((p.meta.h || {}).reroll || 0); p.banishes = (p.meta.h || {}).banish || 0;
       addWeapon(p, CHARS[p.char].weapon); recompute(p); p.hp = p.st.maxhp; G.players.push(p);
     });
     return G;
@@ -38,6 +42,8 @@ const Sim = (() => {
     CHARS[p.char].f(s);
     for (const c of p.charms) CHARMS[c.id].f(s, c.lvl);
     for (const b of p.boons) if (BOONS[b].f) BOONS[b].f(s);
+    const a = p.asc; s.dmg += 0.06 * (a.dmg || 0); s.area += 0.05 * (a.area || 0); s.cdr += 0.05 * (a.cdr || 0); s.maxhp += 15 * (a.hp || 0); s.crit += 0.03 * (a.crit || 0);
+    s.cards += h.cards || 0;
     s.maxhp = Math.round(s.maxhp); s.cdr = Math.max(0.3, s.cdr);
     const old = p.st ? p.st.maxhp : s.maxhp;
     if (s.maxhp > old) p.hp += s.maxhp - old;
@@ -45,7 +51,8 @@ const Sim = (() => {
     p.res = {}; for (const w of p.weapons) { const el = WEAPONS[w.id].el; p.res[el] = (p.res[el] || 0) + 1; }
     G.dirty = true;
   }
-  const resMul = (p, el) => { const c = p.res[el] || 0; return c >= 3 ? 1.45 : c >= 2 ? 1.2 : 1; };
+  const resN = (p, el) => hasBoon(p, 'prism') ? p.weapons.length : (p.res[el] || 0);
+  const resMul = (p, el) => { const c = resN(p, el); return c >= 4 ? 1.75 : c >= 3 ? 1.45 : c >= 2 ? 1.2 : 1; };
   const wd = (p, w, base) => base * p.st.dmg * resMul(p, WEAPONS[w.id].el) * (1 + 0.03 * ((p.meta.m || {})[w.id] || 0)) * p.kin;
 
   // ---------- helpers ----------
@@ -65,7 +72,7 @@ const Sim = (() => {
     if (e.dead) return;
     let crit = false;
     if (p && !(flags & 1) && Math.random() < p.st.crit + (wid === 'beam' ? 0.15 : 0)) { dmg *= 2; crit = true; }
-    if (e.shock > 0) dmg *= 1.25;
+    if (e.shock > 0) dmg *= e.src && hasBoon(e.src, 'surge') ? 1.5 : 1.25;
     e.hp -= dmg;
     if (p) p.dmgBy[wid] = (p.dmgBy[wid] || 0) + dmg;
     if (crit || dmg > 60) text(e.x, e.y - e.r, Math.round(dmg) + (crit ? '!' : ''), crit ? '#fff' : '#ffd9a0');
@@ -74,17 +81,19 @@ const Sim = (() => {
   }
   function mark(e, m, p, el) {
     if (!m || e.dead) return;
-    const has = k => e[k] > 0;
-    if ((m === 'burn' && has('chill')) || (m === 'chill' && has('burn'))) { e.burn = e.chill = 0; return react(e, 'steam', p); }
-    if ((m === 'chill' && has('shock')) || (m === 'shock' && has('chill'))) { e.chill = e.shock = 0; return react(e, 'shatter', p); }
-    if ((m === 'burn' && has('rot')) || (m === 'rot' && has('burn'))) { e.rot = 0; e.rotN = 0; e.burn = 4; e.src = p; return react(e, 'wildfire', p); }
-    if ((m === 'shock' && has('rot')) || (m === 'rot' && has('shock'))) { e.rot = e.shock = 0; e.rotN = 0; return react(e, 'spore', p); }
-    if ((m === 'burn' && has('shock')) || (m === 'shock' && has('burn'))) { e.burn = e.shock = 0; return react(e, 'overload', p); }
-    if ((m === 'chill' && has('rot')) || (m === 'rot' && has('chill'))) { e.chill = e.rot = 0; e.rotN = 0; return react(e, 'frostbite', p); }
-    const d = 3 * (p ? p.st.markDur * ((p.res[el] || 0) >= 3 ? 1.4 : 1) : 1);
+    if (e.rc <= 0) for (const [a, b, kind] of PAIRS) {
+      if (!((m === a && e[b] > 0) || (m === b && e[a] > 0))) continue;
+      e.rc = 0.35;
+      if (!(p && hasBoon(p, 'catalyst'))) { // Catalyst: reactions do not use up the marks
+        if (kind === 'wildfire') { e.rot = 0; e.rotN = 0; e.burn = 4; e.src = p; }
+        else { e[a] = 0; e[b] = 0; if (a === 'rot' || b === 'rot') e.rotN = 0; }
+      }
+      return react(e, kind, p);
+    }
+    const d = 3 * (p ? p.st.markDur * (resN(p, el) >= 3 ? 1.4 : 1) : 1);
     if (e[m] < d) e[m] = d;
     e.src = p;
-    if (m === 'rot') e.rotN = Math.min(8, (e.rotN || 0) + 1);
+    if (m === 'rot') e.rotN = Math.min(p && hasBoon(p, 'blight') ? 16 : 8, (e.rotN || 0) + 1);
     if (m === 'shock' && p && hasBoon(p, 'conduct')) { const o = near(e.x, e.y, 130, new Set([e])); if (o && o.shock < d) o.shock = d; }
   }
   function react(e, kind, p) {
@@ -136,12 +145,17 @@ const Sim = (() => {
   // ---------- weapons ----------
   function shot(p, w, k, a, spd, dmg, o) {
     if (G.shots.length > 420) return;
-    G.shots.push({ id: uid++, k, x: p.x, y: p.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, r: o.r || 6, dmg, p, wid: w.id, el: WEAPONS[w.id].el,
-      pierce: o.pierce || 0, boom: o.boom || 0, life: o.life || 1, t: 0, hit: new Set(), ret: !!o.ret });
+    G.shots.push({ id: uid++, k, x: o.x != null ? o.x : p.x, y: o.y != null ? o.y : p.y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, r: o.r || 6, dmg, p, wid: w.id, el: WEAPONS[w.id].el,
+      pierce: o.pierce || 0, boom: o.boom || 0, life: o.life || 1, t: 0, hit: new Set(), ret: !!o.ret, rehit: o.rehit || 0, rt: 0, frz: !!o.frz });
   }
   function zone(k, x, y, r, life, dmg, p, wid, slow) {
     if (G.zones.length > 160) G.zones.shift();
-    G.zones.push({ k, x, y, r, life, dmg, p, wid, el: wid ? WEAPONS[wid].el : null, tt: 0, slow });
+    const z = { k, x, y, r, life, dmg, p, wid, el: wid ? WEAPONS[wid].el : null, tt: 0, slow };
+    G.zones.push(z); return z;
+  }
+  function lineHit(p, a, len, wdt, fn) {
+    const cx = Math.cos(a), cy = Math.sin(a);
+    for (const e of G.enemies) { if (e.dead) continue; const dx = e.x - p.x, dy = e.y - p.y, t = dx * cx + dy * cy; if (t > 0 && t < len + e.r && Math.abs(dx * cy - dy * cx) < wdt + e.r) fn(e); }
   }
   const FIRE = {
     darts(p, w) {
@@ -185,12 +199,73 @@ const Sim = (() => {
       for (let i = 0; i < n; i++) shot(p, w, SHOT.sickle, a + (i - (n - 1) / 2) * 0.5, 640 * Math.sqrt(p.st.area), wd(p, w, 20 + 8 * w.lvl), { pierce: 1e9, life: 1.3, r: 17 * (w.evo ? 1.4 : 1), ret: true });
       return 1.8;
     },
+    meteor(p, w) {
+      const c = []; inR(p.x, p.y, 430, e => c.push(e)); if (!c.length) return 0;
+      const r = (80 + 6 * w.lvl) * p.st.area, d = wd(p, w, 40 + 14 * w.lvl);
+      for (let i = (w.evo ? 3 : 1) + (p.st.proj >> 1); i > 0; i--) { const e = c[Math.random() * c.length | 0], x = e.x, y = e.y; fx('x', x | 0, y | 0, r | 0, '#ff7a2a'); inR(x, y, r, o => hit(o, d, p, w.id, 'ember')); zone(ZONE.fire, x, y, r * 0.6, 2 * p.st.dur, d * 0.15, p, w.id); }
+      return 3;
+    },
+    brand(p, w) {
+      const r = (105 + 8 * w.lvl) * p.st.area * (w.evo ? 1.35 : 1), d = wd(p, w, 22 + 8 * w.lvl), e = near(p.x, p.y, r + 50);
+      if (!e) return 0;
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      fx('r', p.x | 0, p.y | 0, r | 0, '#ff8a3c');
+      inR(p.x, p.y, r, o => { let da = Math.abs(Math.atan2(o.y - p.y, o.x - p.x) - a); if (da > Math.PI) da = 6.283 - da; if (w.evo || da < 1.1) hit(o, d, p, w.id, 'ember'); });
+      return 1.2;
+    },
+    icicle(p, w) {
+      let e = null; inR(p.x, p.y, 520, o => { if (!e || o.hp > e.hp) e = o; }); if (!e) return 0;
+      const a = Math.atan2(e.y - p.y, e.x - p.x), n = 1 + (p.st.proj >> 1);
+      for (let i = 0; i < n; i++) shot(p, w, SHOT.hail, a + (i - (n - 1) / 2) * 0.25, 540, wd(p, w, 45 + 18 * w.lvl), { pierce: 1e9, life: 1.2, r: 11, boom: w.evo ? 70 * p.st.area : 0, frz: w.evo });
+      return 2.4;
+    },
+    orb(p, w) {
+      const e = near(p.x, p.y, 520), a0 = e ? Math.atan2(e.y - p.y, e.x - p.x) : rnd(0, 6.283), n = (w.evo ? 2 : 1) + (p.st.proj >> 1);
+      for (let i = 0; i < n; i++) shot(p, w, SHOT.orb, a0 + i * 6.283 / n, 130, wd(p, w, 10 + 4 * w.lvl), { pierce: 1e9, life: 4 * p.st.dur, r: (22 + 2 * w.lvl) * Math.sqrt(p.st.area) * (w.evo ? 1.4 : 1), rehit: 0.4 });
+      return 3.2;
+    },
+    rod(p, w) {
+      const z = zone(ZONE.rod, p.x, p.y, 16, 6 * (w.evo ? 2 : 1) * p.st.dur, wd(p, w, 12 + 5 * w.lvl), p, w.id);
+      z.n = (w.evo ? 3 : 1) + (w.lvl >= 3 ? 1 : 0); z.range = 220 * p.st.area;
+      return 5;
+    },
+    vine(p, w) {
+      const used = new Set(), len = (230 + 10 * w.lvl) * p.st.area, d = wd(p, w, 16 + 6 * w.lvl);
+      for (let i = (w.evo ? 3 : 1) + (p.st.proj >> 1); i > 0; i--) {
+        const e = near(p.x, p.y, len + 30, used); if (!e) break; used.add(e);
+        const a = Math.atan2(e.y - p.y, e.x - p.x);
+        fx('b', p.x | 0, p.y | 0, p.x + Math.cos(a) * len | 0, p.y + Math.sin(a) * len | 0, '#8be06a');
+        lineHit(p, a, len, 22, o => hit(o, d, p, w.id, 'bloom'));
+      }
+      return used.size ? 1.1 : 0;
+    },
+    sprout(p, w) {
+      const mine = G.zones.filter(z => z.k === ZONE.sprout && z.p === p && z.life > 0), max = (w.evo ? 2 : 1) + (p.st.proj > 0 ? 1 : 0);
+      if (mine.length >= max) mine[0].life = 0;
+      const z = zone(ZONE.sprout, p.x + rnd(-30, 30), p.y + rnd(-30, 30), 14, 9 * p.st.dur, wd(p, w, 9 + 4 * w.lvl), p, w.id);
+      z.evo = w.evo; z.w = w;
+      return 4.5;
+    },
+    judge(p, w) {
+      const r = 430 * p.st.area, d = wd(p, w, 30 + 15 * w.lvl); if (!near(p.x, p.y, r)) return 0;
+      fx('r', p.x | 0, p.y | 0, r | 0, '#ffffff'); fx('x', p.x | 0, p.y | 0, r * 0.5 | 0, '#fffbe6');
+      inR(p.x, p.y, r, e => { if (w.evo && e.type < 4 && e.hp < e.maxhp * 0.3) hit(e, e.hp + 1, p, w.id, null, 3); else hit(e, d, p, w.id, 'light'); });
+      return w.evo ? 5 : 9;
+    },
   };
   function weapons(p) {
     for (const w of p.weapons) {
       const f = FIRE[w.id];
-      if (f) { w.t -= DT; if (w.t <= 0) { const cd = f(p, w); w.t = cd ? cd / p.st.cdr : 0.25; } continue; }
-      if (w.id === 'trail') {
+      if (f) { w.t -= DT; if (w.t <= 0) { const cd = f(p, w); w.t = cd ? cd / p.st.cdr : 0.25; if (cd && hasBoon(p, 'echo') && Math.random() < 0.2) w.t = 0.12; } continue; }
+      if (w.id === 'rime') {
+        w.acc += DT;
+        const r = (90 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1);
+        G.auras.push(ZONE.aura, p.x | 0, p.y | 0, r | 0);
+        if (w.acc >= 0.5) { w.acc = 0; const d = wd(p, w, 4 + 2 * w.lvl); inR(p.x, p.y, r, e => { if (w.evo && Math.random() < 0.15) e.frozen = Math.max(e.frozen, 0.8); hit(e, d, p, w.id, 'frost'); }); }
+      } else if (w.id === 'halo') {
+        const max = w.evo ? 2 : 1;
+        if (p.ward < max) { w.acc += DT; if (w.acc >= 6 / p.st.cdr) { w.acc = 0; p.ward++; } }
+      } else if (w.id === 'trail') {
         w.acc += DT;
         if (p.mv && w.acc >= 0.22) { w.acc = 0; zone(ZONE.fire, p.x, p.y, 24 * (w.evo ? 1.8 : 1) * p.st.area, 2.2 * (w.evo ? 2 : 1) * p.st.dur, wd(p, w, 5 + 3 * w.lvl), p, w.id); }
       } else if (w.id === 'moths') {
@@ -227,10 +302,36 @@ const Sim = (() => {
     else if (c === 'tolliver') { const r = 140 * p.st.area; fx('z', p.x | 0, p.y | 0, r | 0); inR(p.x, p.y, r, e => hit(e, 45 * lv * p.st.dmg, p, 'skill', 'storm')); }
     else if (c === 'bryn') zone(ZONE.heal, p.x, p.y, 150 * p.st.area, 4.5, 0, p, null);
   }
+  function ult(p) {
+    if (p.down || p.ultCd > 0 || G.level < 6) return;
+    const lv = (1 + G.level * 0.1) * p.st.dmg, c = p.char;
+    p.ultCd = 45 / Math.min(1.6, p.st.cdr);
+    text(p.x, p.y - 44, CHARS[c].ult + '!', CHARS[c].c);
+    if (c === 'wick' || c === 'tolliver') { p.ultT = 5; p.ultAcc = 1; }
+    else if (c === 'mara') { fx('r', p.x | 0, p.y | 0, 620, '#bfeeff'); fx('x', p.x | 0, p.y | 0, 300, '#bfeeff'); inR(p.x, p.y, 620, e => { e.frozen = Math.max(e.frozen, 4); e.chill = 6; hit(e, 60 * lv, p, 'ult', 'frost'); }); }
+    else {
+      for (const q of G.players) { if (q.down) { q.down = false; q.inv = 3; q.hp = q.st.maxhp * 0.6; fx('r', q.x | 0, q.y | 0, 120, '#9dffb0'); } else q.hp = Math.min(q.st.maxhp, q.hp + q.st.maxhp * 0.5); }
+      fx('r', p.x | 0, p.y | 0, 300, '#8be06a');
+      zone(ZONE.thorn, p.x, p.y, 300 * p.st.area, 7, 12 * lv, p, 'thorns', true);
+    }
+  }
+  function ultTick(p) {
+    p.ultT -= DT; p.ultAcc += DT;
+    const lv = (1 + G.level * 0.1) * p.st.dmg;
+    if (p.char === 'wick' && p.ultAcc >= 0.5) { p.ultAcc = 0; const r = 250 * p.st.area; fx('r', p.x | 0, p.y | 0, r | 0, '#ff7a2a'); inR(p.x, p.y, r, e => hit(e, 28 * lv, p, 'ult', 'ember')); }
+    else if (p.char === 'tolliver' && p.ultAcc >= 0.15) { p.ultAcc = 0; const c = []; inR(p.x, p.y, 520, e => c.push(e)); if (c.length) { const e = c[Math.random() * c.length | 0]; fx('z', e.x | 0, e.y | 0, 60); inR(e.x, e.y, 60, o => hit(o, 40 * lv, p, 'ult', 'storm')); } }
+  }
 
   // ---------- players ----------
   function hurt(p, d) {
     if (p.down || p.inv > 0 || p.dashT > 0) return;
+    if (p.ward > 0) { // Halo: block the hit and burst
+      p.ward--; p.inv = 0.6;
+      const w = p.weapons.find(w => w.id === 'halo'), r = 135 * p.st.area;
+      fx('r', p.x | 0, p.y | 0, r | 0, '#ffffff');
+      if (w) { const dm = wd(p, w, 50 + 20 * w.lvl); inR(p.x, p.y, r, e => hit(e, dm, p, 'halo', 'light')); if (w.evo) p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.08); }
+      return;
+    }
     p.hp -= Math.max(1, d - p.st.armor); p.inv = 0.3; // brief grace so a crowd cannot delete you in one instant
     if (p.hp > 0) return;
     if (hasBoon(p, 'second') && !p.usedSecond) { p.usedSecond = true; p.hp = p.st.maxhp * 0.5; p.inv = 3; text(p.x, p.y - 30, 'Second Wind!', '#fff'); fx('r', p.x | 0, p.y | 0, 150, '#fff'); return; }
@@ -241,6 +342,7 @@ const Sim = (() => {
     for (const p of G.players) {
       if (p.inv > 0) p.inv -= DT;
       if (p.skillT > 0) p.skillT -= DT;
+      if (p.ultCd > 0) p.ultCd -= DT;
       if (p.down) {
         let mates = 0; for (const q of G.players) if (!q.down && (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < 75 * 75) mates++;
         p.rev = mates ? p.rev + DT / 3 * (0.5 + 0.5 * mates) : Math.max(0, p.rev - DT * 0.5);
@@ -250,7 +352,10 @@ const Sim = (() => {
       }
       p.still = p.mv ? 0 : p.still + DT;
       p.hp = Math.min(p.st.maxhp, p.hp + (p.st.regen + (hasBoon(p, 'roots') && p.still > 0.5 ? p.st.maxhp * 0.04 : 0)) * DT);
+      p.kin = 1;
       if (hasBoon(p, 'kindred')) { let m = 0; for (const q of G.players) if (q !== p && !q.down && (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < 260 * 260) m++; p.kin = 1 + 0.08 * m; }
+      if (hasBoon(p, 'berserk')) p.kin *= 1 + (1 - p.hp / p.st.maxhp) * 0.8;
+      if (p.ultT > 0) ultTick(p);
       if (p.dashT > 0) { p.dashT -= DT; zone(ZONE.fire, p.x, p.y, 34 * p.st.area, 2.5 * p.st.dur, (10 + 2 * G.level) * p.st.dmg, p, 'darts'); }
       weapons(p);
       const pr = p.st.pickup * p.st.pickup;
@@ -274,7 +379,8 @@ const Sim = (() => {
       if (Math.abs(nx - p.x) + Math.abs(ny - p.y) > 0.5) p.mv = true;
       p.x = nx; p.y = ny; if (m.fx || m.fy) { p.fx = m.fx; p.fy = m.fy; }
     }
-    if (m.sk) skill(p);
+    if (m.sk & 1) skill(p);
+    if (m.sk & 2) ult(p);
   }
 
   // ---------- enemies ----------
@@ -282,7 +388,7 @@ const Sim = (() => {
     const T = ENEMIES[type], hs = 1 + (G.t / 60) * 0.3 + (G.t / 60) ** 2 * 0.022;
     const hp = T.hp * hs * (hpMul || 1);
     const e = { id: uid++, type, x: Math.max(-WORLD - 80, Math.min(WORLD + 80, x)), y: Math.max(-WORLD - 80, Math.min(WORLD + 80, y)), hp, maxhp: hp, spd: T.spd * rnd(0.9, 1.1), dmg: T.dmg * (1 + G.t / 600), r: T.r,
-      burn: 0, chill: 0, shock: 0, rot: 0, rotN: 0, frozen: 0, slow: 0, hc: 0, at: rnd(1, 3), src: null, dead: false };
+      burn: 0, chill: 0, shock: 0, rot: 0, rotN: 0, frozen: 0, slow: 0, hc: 0, rc: 0, at: rnd(1, 3), src: null, dead: false };
     G.enemies.push(e); return e;
   }
   function spawner() {
@@ -331,10 +437,10 @@ const Sim = (() => {
       const e = L[i]; if (e.dead) continue;
       if (e.burn > 0) e.burn -= DT; if (e.chill > 0) e.chill -= DT; if (e.shock > 0) e.shock -= DT;
       if (e.rot > 0) { e.rot -= DT; if (e.rot <= 0) e.rotN = 0; }
-      if (e.frozen > 0) e.frozen -= DT; if (e.slow > 0) e.slow -= DT; if (e.hc > 0) e.hc -= DT;
+      if (e.frozen > 0) e.frozen -= DT; if (e.slow > 0) e.slow -= DT; if (e.hc > 0) e.hc -= DT; if (e.rc > 0) e.rc -= DT;
       if (dot) {
         const sd = e.src ? e.src.st.dmg : 1, lv = 1 + G.level * 0.08;
-        if (e.burn > 0) hit(e, 5 * lv * sd, e.src, 'dot', null, 3);
+        if (e.burn > 0) hit(e, 5 * lv * sd * (e.src && hasBoon(e.src, 'pyre') ? 2 : 1), e.src, 'dot', null, 3);
         if (e.rot > 0 && !e.dead) hit(e, 2.2 * e.rotN * lv * sd, e.src, 'dot', null, 3);
         if (e.dead) continue;
       }
@@ -344,7 +450,7 @@ const Sim = (() => {
       const dx = tp.x - e.x, dy = tp.y - e.y, d = Math.sqrt(bd) || 1, big = e.type >= 4;
       if (e.type === 5) { bossAI(e, tp, d, dx, dy); continue; }
       if (d > 1500) { e.dead = true; continue; } // left far behind: quietly remove
-      const sp = e.spd * (e.frozen > 0 && !big ? 0 : 1) * (e.chill > 0 ? (big ? 0.85 : 0.6) : 1) * (e.slow > 0 ? 0.65 : 1) * DT;
+      const sp = e.spd * (e.frozen > 0 && !big ? 0 : 1) * (e.chill > 0 ? (big ? 0.85 : e.src && hasBoon(e.src, 'perma') ? 0.35 : 0.6) : 1) * (e.slow > 0 ? 0.65 : 1) * DT;
       if (e.type === 3) {
         const dir = d < 220 ? -0.7 : d > 300 ? 1 : 0;
         e.x += (dx / d * dir - dy / d * (dir ? 0 : 0.5)) * sp; e.y += (dy / d * dir + dx / d * (dir ? 0 : 0.5)) * sp;
@@ -367,14 +473,15 @@ const Sim = (() => {
       let f = 1;
       if (s.ret) { f = 1 - 2 * s.t / s.life; if (f < 0 && !s.turned) { s.turned = true; s.hit.clear(); } }
       s.x += s.vx * f * DT; s.y += s.vy * f * DT;
+      if (s.rehit && (s.rt += DT) >= s.rehit) { s.rt = 0; s.hit.clear(); }
       if (s.enemy) { for (const p of G.players) if (!p.down && (p.x - s.x) ** 2 + (p.y - s.y) ** 2 < (s.r + 13) ** 2) { hurt(p, s.dmg); s.dead = true; break; } continue; }
       const L = G.enemies;
       for (let i = 0; i < L.length; i++) {
         const e = L[i]; if (e.dead) continue;
         const dx = e.x - s.x, dy = e.y - s.y, rr = e.r + s.r;
         if (dx * dx + dy * dy > rr * rr || s.hit.has(e)) continue;
-        s.hit.add(e); hit(e, s.dmg, s.p, s.wid, s.el);
-        if (s.boom) { fx('x', s.x | 0, s.y | 0, s.boom | 0, '#ff8a3c'); inR(s.x, s.y, s.boom, o => { if (o !== e) hit(o, s.dmg * 0.6, s.p, s.wid, s.el); }); }
+        s.hit.add(e); if (s.frz) e.frozen = Math.max(e.frozen, 1); hit(e, s.dmg, s.p, s.wid, s.el);
+        if (s.boom) { fx('x', s.x | 0, s.y | 0, s.boom | 0, s.k === SHOT.hail ? '#7fd8ff' : '#ff8a3c'); inR(s.x, s.y, s.boom, o => { if (o !== e) hit(o, s.dmg * 0.6, s.p, s.wid, s.el); }); }
         if (--s.pierce < 0) { s.dead = true; break; }
       }
     }
@@ -382,7 +489,13 @@ const Sim = (() => {
     for (const z of G.zones) {
       z.life -= DT; z.tt -= DT; if (z.tt > 0) continue;
       z.tt = 0.45;
-      if (z.k === ZONE.heal) { for (const p of G.players) if (!p.down && (p.x - z.x) ** 2 + (p.y - z.y) ** 2 < z.r * z.r) p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.035); }
+      if (z.k === ZONE.rod) {
+        const used = new Set();
+        for (let i = 0; i < z.n; i++) { const e = near(z.x, z.y, z.range, used); if (!e) break; used.add(e); fx('b', z.x | 0, z.y - 20 | 0, e.x | 0, e.y | 0, '#ffe45c'); hit(e, z.dmg, z.p, z.wid, z.el); }
+      } else if (z.k === ZONE.sprout) {
+        const e = near(z.x, z.y, 420);
+        if (e) shot(z.p, z.w, SHOT.seed, Math.atan2(e.y - z.y, e.x - z.x), 480, z.dmg, { x: z.x, y: z.y, pierce: z.evo ? 3 : 0, life: 1, r: 7 });
+      } else if (z.k === ZONE.heal) { for (const p of G.players) if (!p.down && (p.x - z.x) ** 2 + (p.y - z.y) ** 2 < z.r * z.r) p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.035); }
       else inR(z.x, z.y, z.r, e => { if (z.slow) e.slow = 0.8; hit(e, z.dmg, z.p, z.wid, z.el); });
     }
     G.zones = G.zones.filter(z => z.life > 0);
@@ -400,30 +513,41 @@ const Sim = (() => {
   function cards(p) {
     const out = [], pool = [], n = p.st.cards, own = id => p.charms.some(c => c.id === id);
     for (const w of p.weapons) { if (w.lvl >= 5 && !w.evo && own(WEAPONS[w.id].charm)) out.push({ k: 'evo', id: w.id }); else if (w.lvl < 5) pool.push({ k: 'w', id: w.id, lvl: w.lvl + 1, wt: 3 }); }
-    if (p.weapons.length < 5) for (const id in WEAPONS) if (!p.weapons.some(w => w.id === id)) pool.push({ k: 'w', id, lvl: 1, wt: 2 });
+    const lock = p.meta.lock || [];
+    if (p.weapons.length < 5) for (const id in WEAPONS) if (!p.weapons.some(w => w.id === id) && lock.indexOf(id) < 0 && !p.banned['w' + id]) pool.push({ k: 'w', id, lvl: 1, wt: p.res[WEAPONS[id].el] ? 2.6 : 2 });
     for (const c of p.charms) if (c.lvl < 5) pool.push({ k: 'c', id: c.id, lvl: c.lvl + 1, wt: 3 });
-    if (p.charms.length < 5) for (const id in CHARMS) if (!own(id)) pool.push({ k: 'c', id, lvl: 1, wt: p.weapons.some(w => WEAPONS[w.id].charm === id) ? 4 : 1.5 });
+    if (p.charms.length < 5) for (const id in CHARMS) if (!own(id) && !p.banned['c' + id]) pool.push({ k: 'c', id, lvl: 1, wt: p.weapons.some(w => WEAPONS[w.id].charm === id) ? 4 : 1.5 });
     sample(pool, n, out);
-    if (!out.length) out.push({ k: 'heal' }, { k: 'ember' });
+    // nothing left to level: endless Ascension upgrades that stack forever
+    const asc = ASC.slice();
+    while (out.length < n && asc.length) out.push({ k: 'asc', id: asc.splice(Math.random() * asc.length | 0, 1)[0] });
     return out.slice(0, Math.max(n, 1));
   }
   function boonCards(p) {
-    const pool = []; for (const id in BOONS) if (!hasBoon(p, id) && !(id === 'kindred' && G.n < 2)) pool.push({ k: 'boon', id, wt: 1 });
+    const pool = []; for (const id in BOONS) if (!hasBoon(p, id) && !(id === 'kindred' && G.n < 2)) pool.push({ k: 'boon', id, wt: [0, 6, 3, 1.2][BOONS[id].r || 1] });
     const out = sample(pool, 3, []); return out.length ? out : [{ k: 'heal' }];
+  }
+  function redeal(pid, banIdx) { // reroll (banIdx undefined) or banish one new card for the rest of the night
+    const z = G && G.pause, p = player(pid); if (!z || !p) return;
+    const k = z.picks[pid]; if (!k || k.done) return;
+    if (banIdx == null) { if (p.rerolls <= 0) return; p.rerolls--; }
+    else { const c = k.cards[banIdx]; if (!c || (c.k !== 'w' && c.k !== 'c') || c.lvl !== 1 || p.banishes <= 0 || z.kind === 'boon') return; p.banishes--; p.banned[c.k + c.id] = 1; }
+    k.cards = z.kind === 'boon' ? boonCards(p) : cards(p); k.rr = p.rerolls; k.bn = p.banishes; k.fresh = true;
   }
   function applyCard(p, c) {
     if (c.k === 'w') { const w = p.weapons.find(w => w.id === c.id); if (w) w.lvl = Math.min(5, w.lvl + 1); else addWeapon(p, c.id); }
     else if (c.k === 'c') { const o = p.charms.find(x => x.id === c.id); if (o) o.lvl = Math.min(5, o.lvl + 1); else p.charms.push({ id: c.id, lvl: 1 }); }
     else if (c.k === 'evo') { const w = p.weapons.find(w => w.id === c.id); if (w && !w.evo) { w.evo = true; G.evos++; } }
     else if (c.k === 'boon') p.boons.push(c.id);
+    else if (c.k === 'asc') p.asc[c.id] = (p.asc[c.id] || 0) + 1;
     else if (c.k === 'heal') p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.3);
     else G.coins += 25;
     recompute(p);
   }
   function startPause(kind) {
     const picks = {};
-    for (const p of G.players) picks[p.id] = { cards: kind === 'boon' ? boonCards(p) : cards(p), done: false };
-    G.pause = { kind, picks, t: kind === 'boon' ? 25 : 18, fresh: true };
+    for (const p of G.players) picks[p.id] = { cards: kind === 'boon' ? boonCards(p) : cards(p), done: false, fresh: true, rr: p.rerolls, bn: p.banishes };
+    G.pause = { kind, picks, t: kind === 'boon' ? 25 : 18 };
   }
   function pick(pid, i) {
     const z = G && G.pause; if (!z) return;
@@ -442,7 +566,7 @@ const Sim = (() => {
   function step() {
     if (!G || G.over) return;
     if (G.pause) { G.pause.t -= DT; if (G.pause.t <= 0) for (const id in G.pause.picks) pick(+id, 0); return; }
-    G.t += DT; G.txt = 0; G.beams = []; G.orbs = [];
+    G.t += DT; G.txt = 0; G.beams = []; G.orbs = []; G.auras = [];
     players(); spawner(); enemies(); shotsAndZones();
     G.enemies = G.enemies.filter(e => !e.dead);
     if (G.over) return;
@@ -454,22 +578,23 @@ const Sim = (() => {
     const s = { t: 's', tm: Math.round(G.t * 10) / 10, lv: G.level, xp: Math.round(G.xp), xn: Math.round(G.xpNeed), k: G.kills, pz: G.pause ? Math.ceil(G.pause.t) : 0,
       P: [], E: [], S: [], Z: [], K: [], B: G.beams, O: G.orbs, ev: G.ev, sh: 0, bo: 0 };
     G.ev = [];
-    for (const p of G.players) s.P.push([p.id, Math.round(p.x), Math.round(p.y), Math.ceil(p.hp), p.st.maxhp, (p.down ? 1 : 0) | (p.inv > 0 ? 2 : 0) | (p.dashT > 0 ? 4 : 0), Math.round(p.rev * 100), p.skillT > 0 ? Math.ceil(p.skillT * 10) : 0]);
+    for (const p of G.players) s.P.push([p.id, Math.round(p.x), Math.round(p.y), Math.ceil(p.hp), p.st.maxhp, (p.down ? 1 : 0) | (p.inv > 0 ? 2 : 0) | (p.dashT > 0 ? 4 : 0) | (p.ward > 0 ? 8 : 0) | (p.ultT > 0 ? 16 : 0), Math.round(p.rev * 100), p.skillT > 0 ? Math.ceil(p.skillT * 10) : 0, G.level < 6 ? -1 : Math.ceil(Math.max(0, p.ultCd))]);
     for (const e of G.enemies) s.E.push(e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(1, Math.round(e.hp / e.maxhp * 100)), (e.burn > 0 ? 1 : 0) | (e.chill > 0 ? 2 : 0) | (e.shock > 0 ? 4 : 0) | (e.rot > 0 ? 8 : 0) | (e.frozen > 0 ? 16 : 0) | (e.st === 'wind' ? 32 : 0));
     for (const o of G.shots) s.S.push(o.id, o.k, Math.round(o.x), Math.round(o.y), Math.round(o.r));
     for (const z of G.zones) s.Z.push(z.k, Math.round(z.x), Math.round(z.y), Math.round(z.r));
+    for (const a of G.auras) s.Z.push(a);
     for (const k of G.pickups) s.K.push(k.id, k.k, Math.round(k.x), Math.round(k.y));
     if (G.shrine) s.sh = [G.shrine.x | 0, G.shrine.y | 0, G.shrine.r, Math.round(G.shrine.prog * 100)];
     if (G.boss && !G.boss.dead) s.bo = Math.max(0, Math.round(G.boss.hp / G.boss.maxhp * 1000));
     return s;
   }
   function builds() {
-    return G.players.map(p => ({ id: p.id, name: p.name, char: p.char, spd: 190 * p.st.spd, w: p.weapons.map(w => [w.id, w.lvl, w.evo ? 1 : 0]), c: p.charms.map(c => [c.id, c.lvl]), b: p.boons, res: p.res, st: { dmg: p.st.dmg, area: p.st.area, cdr: p.st.cdr, crit: p.st.crit, armor: p.st.armor } }));
+    return G.players.map(p => ({ id: p.id, name: p.name, char: p.char, spd: 190 * p.st.spd, w: p.weapons.map(w => [w.id, w.lvl, w.evo ? 1 : 0]), c: p.charms.map(c => [c.id, c.lvl]), b: p.boons, asc: p.asc, res: hasBoon(p, 'prism') ? Object.fromEntries(Object.keys(p.res).map(e => [e, p.weapons.length])) : p.res, st: { dmg: p.st.dmg, area: p.st.area, cdr: p.st.cdr, crit: p.st.crit, armor: p.st.armor } }));
   }
   function results() {
     const per = {}; for (const p of G.players) per[p.id] = { kills: p.kills, reacts: p.reacts, dmgBy: p.dmgBy, char: p.char };
-    return { win: !!(G.over && G.over.win), time: Math.floor(G.t), level: G.level, kills: G.kills, shrines: G.shrines, reactions: G.reactions, evos: G.evos, players: G.n,
+    return { win: !!(G.over && G.over.win), time: Math.floor(G.t), level: G.level, kills: G.kills, shrines: G.shrines, boons: Math.max(0, ...G.players.map(p => p.boons.length)), reactions: G.reactions, evos: G.evos, players: G.n,
       embers: Math.floor(G.t * 0.3 + G.kills * 0.05 + G.coins + (G.over && G.over.win ? 150 : 0)), per };
   }
-  return { DT, WORLD, newGame, step, snap, builds, results, input, pick, removePlayer, get G() { return G; } };
+  return { DT, WORLD, newGame, step, snap, builds, results, input, pick, redeal, removePlayer, get G() { return G; } };
 })();

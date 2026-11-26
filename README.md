@@ -23,6 +23,8 @@ When you are done, close the black window.
 
 - **WASD** (or arrow keys): move. Weapons fire by themselves.
 - **Space**: your keeper's skill.
+- **Q**: your keeper's ultimate, once the team reaches level 6.
+- **R**: reroll your upgrade cards (limited; more are sold at the Hearth).
 - **1 / 2 / 3** or click: pick an upgrade card.
 
 ## Playing with a friend

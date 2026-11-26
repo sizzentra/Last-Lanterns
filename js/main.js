@@ -16,7 +16,7 @@
 
   const unlocked = c => !CHARS[c].goal || save.goals[CHARS[c].goal];
   const myName = () => (save.name || 'Keeper').slice(0, 14);
-  const myMeta = () => { const m = {}; for (const w in WEAPONS) m[w] = Account.mastery(save.mastery[w] || 0).rank; return { h: save.hearth, kl: Account.keeper(save.keeper[save.char] || 0).lvl, m }; };
+  const myMeta = () => { const m = {}; for (const w in WEAPONS) m[w] = Account.mastery(save.mastery[w] || 0).rank; return { h: save.hearth, kl: Account.keeper(save.keeper[save.char] || 0).lvl, m, lock: Object.keys(WEAPONS).filter(w => WEAPONS[w].goal && !save.goals[WEAPONS[w].goal]) }; };
   const me = () => ({ id: myId, name: myName(), char: save.char, meta: myMeta() });
   const say = t => { $('msg').textContent = t || ''; };
 
@@ -33,7 +33,7 @@
     let locks = CHAR_IDS.filter(c => !unlocked(c)).map(c => `<br><small>${CHARS[c].name} unlocks with the goal: ${GOALS[CHARS[c].goal].desc}.</small>`).join('');
     $('charInfo').innerHTML = `<b>${C.name}</b>, ${C.title}. Keeper level ${k.lvl} <small>(+${k.lvl}% damage, +${k.lvl * 2} health)</small>
       <div class="bar"><i style="width:${k.into / k.need * 100}%"></i></div>
-      Starts with <b style="color:${ELEM[W.el].c}">${W.name}</b>: ${W.desc}<br>Trait: ${C.passive}.<br>Skill (Space): <b>${C.skill}</b>. ${C.skillDesc}${locks}`;
+      Starts with <b style="color:${ELEM[W.el].c}">${W.name}</b>: ${W.desc}<br>Trait: ${C.passive}.<br>Skill (Space): <b>${C.skill}</b>. ${C.skillDesc}<br>Ultimate (Q, from team level 6): <b>${C.ult}</b>. ${C.ultDesc}${locks}`;
     renderParty();
   }
   function renderParty() {
@@ -88,6 +88,8 @@
       if (d.t === 'h') { const p = party.find(p => p.id === c.pid); if (p && !inGame && CHARS[d.char]) { p.name = String(d.name || 'Friend').slice(0, 14); p.char = d.char; p.meta = d.meta || {}; sendLobby(); renderParty(); } }
       else if (d.t === 'i' && inGame) Sim.input(c.pid, d);
       else if (d.t === 'p' && inGame) Sim.pick(c.pid, d.i | 0);
+      else if (d.t === 'rr' && inGame) Sim.redeal(c.pid);
+      else if (d.t === 'bn' && inGame) Sim.redeal(c.pid, d.i | 0);
     } else if (role === 'client') {
       if (d.t === 'l') { myId = d.you; party = d.players; renderParty(); }
       else if (d.t === 's') { if (inGame) onSnap(d); }
@@ -113,7 +115,7 @@
     View.reset(); $('camp').classList.add('hidden'); $('end').classList.add('hidden'); $('cards').classList.add('hidden'); $('build').classList.remove('hidden'); $('build').innerHTML = '';
   }
   function showCamp() { $('camp').classList.remove('hidden'); $('build').classList.add('hidden'); $('cards').classList.add('hidden'); renderCamp(); }
-  const localInput = () => { const m = View.me, o = { t: 'i', x: Math.round(m.x), y: Math.round(m.y), fx: m.fx, fy: m.fy, sk: skLatch ? 1 : 0 }; skLatch = false; return o; };
+  const localInput = () => { const m = View.me, o = { t: 'i', x: Math.round(m.x), y: Math.round(m.y), fx: m.fx, fy: m.fy, sk: skLatch | 0 }; skLatch = 0; return o; };
 
   function hostTick() {
     if (!inGame || role === 'client') return;
@@ -124,9 +126,9 @@
     for (const e of s.ev) netEv.push(e);
     onSnap(s);
     if (G.dirty) { G.dirty = false; const B = Sim.builds(); onBuilds(B); Net.broadcast({ t: 'b', B }); }
-    if (G.pause && G.pause.fresh) {
-      G.pause.fresh = false;
-      for (const id in G.pause.picks) { const m = { t: 'c', kind: G.pause.kind, cards: G.pause.picks[id].cards }; if (+id === myId) showCards(m); else Net.send(Net.conns.find(c => c.pid === +id), m); }
+    if (G.pause) {
+
+      for (const id in G.pause.picks) { const k = G.pause.picks[id]; if (!k.fresh) continue; k.fresh = false; const m = { t: 'c', kind: G.pause.kind, cards: k.cards, rr: k.rr, bn: k.bn }; if (+id === myId) showCards(m); else Net.send(Net.conns.find(c => c.pid === +id), m); }
     }
     if (++tick % 3 === 0 && Net.conns.length) { Net.broadcast(Object.assign({}, s, { ev: netEv })); netEv = []; } else if (!Net.conns.length) netEv = [];
     if (G.over) { const R = Sim.results(); Net.broadcast({ t: 'end', R }); onEnd(R); }
@@ -164,25 +166,35 @@
       else { tag = (c.lvl === 1 ? 'New weapon' : 'Weapon level ' + c.lvl) + ' &middot; ' + E.name; title = W.name; desc = W.desc; hint = `Evolves at level 5 with the charm ${CHARMS[W.charm].name}${hasCharm ? ' (you have it)' : ''}.`; if (E.mark && c.lvl === 1) hint += ` Two different marks on one enemy cause a reaction.`; }
     } else if (c.k === 'c') {
       const C = CHARMS[c.id]; tag = c.lvl === 1 ? 'New charm' : 'Charm level ' + c.lvl; title = C.name; desc = C.desc + ' per level.';
-      const w = Object.keys(WEAPONS).find(w => WEAPONS[w].charm === c.id); if (w) hint = `Lets ${WEAPONS[w].name} evolve${b.w.some(x => x[0] === w) ? ' (you have it)' : ''}.`;
-    } else if (c.k === 'boon') { tag = 'Boon'; col = '#ffd27a'; title = BOONS[c.id].name; desc = BOONS[c.id].desc + '.'; hint = 'Lasts for the rest of this night.'; }
+      const mine = Object.keys(WEAPONS).filter(w => WEAPONS[w].charm === c.id && b.w.some(x => x[0] === w));
+      if (mine.length) hint = `Lets your ${mine.map(w => WEAPONS[w].name).join(' and ')} evolve at level 5.`;
+    } else if (c.k === 'boon') { const B = BOONS[c.id], r = B.r || 1; tag = ['', 'Boon', 'Rare Boon', 'Legendary Boon'][r]; col = ['', '#ffd27a', '#6bb8ff', '#ff7ad9'][r]; if (r === 3) cls = 'evo'; title = B.name; desc = B.desc + '.'; hint = 'Lasts for the rest of this night.'; }
+    else if (c.k === 'asc') { const A = { dmg: ['Ascend: Might', '+6% damage'], area: ['Ascend: Reach', '+5% area'], cdr: ['Ascend: Tempo', 'Weapons fire 5% faster'], hp: ['Ascend: Vigor', '+15 max health'], crit: ['Ascend: Edge', '+3% crit chance'] }[c.id]; tag = 'Ascension'; col = '#ff7ad9'; title = A[0]; desc = A[1] + '. Stacks forever.'; hint = `You have taken this ${(b.asc && b.asc[c.id]) || 0} time(s).`; }
     else if (c.k === 'heal') { tag = 'Rest'; title = 'Catch your breath'; desc = 'Heal 30% of your health.'; }
     else { tag = 'Spoils'; title = 'Pocket the Embers'; desc = '+25 Embers for the team.'; }
-    return `<div class="card ${cls}" data-i="${i}" style="border-color:${cls ? '' : col + '66'}"><span class="key">${i + 1}</span><div class="tag" style="color:${col}">${tag}</div><h3>${title}</h3><p>${desc}</p>${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+    const ban = curBn > 0 && curKind !== 'boon' && (c.k === 'w' || c.k === 'c') && c.lvl === 1 ? `<div class="ban" data-ban="${i}">Banish this for the night</div>` : '';
+    return `<div class="card ${cls}" data-i="${i}" style="border-color:${cls ? '' : col + '66'}"><span class="key">${i + 1}</span><div class="tag" style="color:${col}">${tag}</div><h3>${title}</h3><p>${desc}</p>${hint ? `<div class="hint">${hint}</div>` : ''}${ban}</div>`;
   }
+  let curRr = 0, curBn = 0, curKind = '';
   function showCards(m) {
-    curCards = m.cards; picked = false;
+    curCards = m.cards; picked = false; curRr = m.rr || 0; curBn = m.bn || 0; curKind = m.kind;
     $('cardsTitle').textContent = m.kind === 'boon' ? 'The shrine is lit: choose a Boon' : m.kind === 'chest' ? 'Elite chest: a free upgrade' : 'Level up! Choose one';
     $('cardsSub').textContent = 'Press 1, 2 or 3, or click.';
-    $('cardList').innerHTML = m.cards.map(cardHtml).join('');
+    $('cardList').innerHTML = m.cards.map(cardHtml).join('') + `<div class="rr"><button id="rrBtn" ${curRr > 0 ? '' : 'disabled'}>Reroll (R) &middot; ${curRr} left</button>${curBn > 0 ? ` <small>${curBn} banish left</small>` : ''}</div>`;
     $('cards').classList.remove('hidden');
   }
+  function reroll() { if (picked || !curCards || curRr <= 0) return; curRr = 0; if (role === 'client') Net.toHost({ t: 'rr' }); else Sim.redeal(myId); }
   function pickCard(i) {
     if (picked || !curCards || i >= curCards.length) return;
     picked = true; $('cardList').innerHTML = ''; $('cardsTitle').textContent = 'Waiting for the others...'; $('cardsSub').textContent = '';
     if (role === 'client') Net.toHost({ t: 'p', i }); else Sim.pick(myId, i);
   }
-  $('cardList').onclick = e => { const el = e.target.closest('.card'); if (el) pickCard(+el.dataset.i); };
+  $('cardList').onclick = e => {
+    if (e.target.id === 'rrBtn') return reroll();
+    if (e.target.dataset.ban != null) { if (picked) return; const i = +e.target.dataset.ban; curBn = 0; if (role === 'client') Net.toHost({ t: 'bn', i }); else Sim.redeal(myId, i); return; }
+    const el = e.target.closest('.card'); if (el) pickCard(+el.dataset.i);
+  };
+  function tryUlt() { const c = View.cur, p = c && c.P.get(myId); if (!p || p.ul !== 0 || (p.fl & 1) || c.s.pz) return; skLatch |= 2; }
 
   // ---------- end of a night: pay out lasting progress ----------
   function onEnd(R) {
@@ -221,11 +233,11 @@
       return `<h1 style="font-size:30px">Goal Book</h1><p class="sub">Finish goals during a night to unlock new things.</p><table>` + Object.keys(GOALS).map(g => `<tr><td><b>${GOALS[g].name}</b><br><small>${GOALS[g].desc}</small></td><td>${GOALS[g].reward}</td><td class="${save.goals[g] ? 'done' : ''}">${save.goals[g] ? 'Done' : 'Not yet'}</td></tr>`).join('') + '</table>';
     },
     mastery() {
-      return `<h1 style="font-size:30px">Weapon Mastery</h1><p class="sub">Every point of damage you deal with a weapon counts forever. Each rank is +3% damage with that weapon.</p><table>` + Object.keys(WEAPONS).map(w => { const m = Account.mastery(save.mastery[w] || 0); return `<tr><td><b style="color:${ELEM[WEAPONS[w].el].c}">${WEAPONS[w].name}</b><br><small>${ELEM[WEAPONS[w].el].name} &middot; evolves with ${CHARMS[WEAPONS[w].charm].name} into ${WEAPONS[w].evo}</small></td><td style="width:40%">Rank ${m.rank}${m.rank >= 10 ? ' (max)' : ''}<div class="bar"><i style="width:${m.rank >= 10 ? 100 : m.into / m.need * 100}%"></i></div></td></tr>`; }).join('') + '</table>';
+      return `<h1 style="font-size:30px">Weapon Mastery</h1><p class="sub">Every point of damage you deal with a weapon counts forever. Each rank is +3% damage with that weapon.</p><table>` + Object.keys(WEAPONS).map(w => { const m = Account.mastery(save.mastery[w] || 0); return `<tr><td><b style="color:${ELEM[WEAPONS[w].el].c}">${WEAPONS[w].name}</b>${WEAPONS[w].goal && !save.goals[WEAPONS[w].goal] ? ' <small>(locked: ' + GOALS[WEAPONS[w].goal].desc + ')</small>' : ''}<br><small>${ELEM[WEAPONS[w].el].name} &middot; evolves with ${CHARMS[WEAPONS[w].charm].name} into ${WEAPONS[w].evo}</small></td><td style="width:40%">Rank ${m.rank}${m.rank >= 10 ? ' (max)' : ''}<div class="bar"><i style="width:${m.rank >= 10 ? 100 : m.into / m.need * 100}%"></i></div></td></tr>`; }).join('') + '</table>';
     },
     help() {
       return `<h1 style="font-size:30px">How to play</h1><ul class="gain">
-        <li><b>WASD</b> (or arrow keys) to move. Your weapons fire by themselves.</li><li><b>Space</b> uses your keeper's skill.</li>
+        <li><b>WASD</b> (or arrow keys) to move. Your weapons fire by themselves.</li><li><b>Space</b> uses your keeper's skill. <b>Q</b> uses their ultimate once the team reaches level 6.</li><li><b>R</b> rerolls your cards (limited). More rerolls and banishes are sold at the Hearth.</li>
         <li>Collect the sparks enemies drop. The whole team shares one level bar; on a level-up everyone picks one card (keys <b>1 2 3</b>).</li>
         <li>Weapons leave marks: <b style="color:#ff8a3c">Burn</b>, <b style="color:#7fd8ff">Chill</b>, <b style="color:#ffe45c">Shock</b>, <b style="color:#8be06a">Rot</b>. Two different marks on one enemy cause a <b>reaction</b>. Your friends' marks count too.</li>
         <li>Two or more weapons of the same element make that element stronger.</li>
@@ -248,6 +260,8 @@
     if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; if (inGame) e.preventDefault(); }
     if (!inGame) return;
     if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3' || e.code === 'Digit4') pickCard(+e.code.slice(5) - 1);
+    if (e.code === 'KeyR') reroll();
+    if (e.code === 'KeyQ' && !e.repeat) tryUlt();
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) trySkill(); }
   });
   addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
@@ -255,7 +269,7 @@
   function trySkill() {
     const c = View.cur, p = c && c.P.get(myId); if (!p || p.sk || (p.fl & 1) || c.s.pz) return;
     const b = View.builds.find(x => x.id === myId); if (!b) return;
-    skLatch = true;
+    skLatch |= 1;
     if (b.char === 'wick') dashT = 0.28;
     else if (b.char === 'tolliver') { View.me.x += View.me.fx * 190; View.me.y += View.me.fy * 190; clampMe(); }
   }
