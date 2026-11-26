@@ -5,7 +5,13 @@ An online co-op swarm-survival game for 1 to 4 friends, played in the browser.
 - Research behind it: [docs/RESEARCH.md](docs/RESEARCH.md)
 - Full design and build order: [docs/DESIGN.md](docs/DESIGN.md)
 
-## How to open the game
+## Play online
+
+**https://sizzentra.github.io/Last-Lanterns/**
+
+Open that link in a browser. Send the same link to friends. Nothing to install.
+
+## How to open the copy on this computer
 
 1. Open the `NewGame` folder.
 2. Double-click **Play.bat**. A small black window opens (leave it open) and the game appears in your browser.
@@ -30,7 +36,7 @@ Everyone needs the game open in their own browser, and an internet connection.
 
 To try it by yourself: open the game in two browser tabs, host in one and join from the other.
 
-**Getting the game to your friends.** For now, send them the whole `NewGame` folder as a zip; they unzip it and double-click Play.bat. The better way, planned next, is to put the game on a free web host so you just share one link.
+**Getting the game to your friends.** Send them the link above. Progress is saved separately for the online link and for the copy on this computer, so pick one and stick with it (the link is the one to use with friends).
 
 **If joining fails.** A small share of networks (some school, work or mobile networks) block direct connections between browsers. Trying a different network usually fixes it.
 
