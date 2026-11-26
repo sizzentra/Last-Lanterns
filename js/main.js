@@ -183,6 +183,7 @@
       else if (k === 'A') { View.banner = { a: e[1], b: e[2], t: nowT }; Sfx.play(e[3]); if (String(e[1]).indexOf('EVOLVED') === 0) Sfx.play('evo'); Sfx.say(e[1] + '. ' + e[2], 0, true); }
       else if (k === 'V') { View.sub = { a: e[1], t: nowT }; Sfx.say(e[1]); }
       else if (k === 'S') Sfx.play(e[1]);
+      else if (k === 'T') { if (e[1] === myId) { View.me.x = e[2]; View.me.y = e[3]; } }
       else if (k === 'W') { View.fx.push({ e: ['t', e[1], e[2], e[3], e[4]], t: nowT }); Sfx.say(e[3], 1.9); }
     }
     if (!s.pz && !$('cards').classList.contains('hidden')) $('cards').classList.add('hidden');
@@ -412,6 +413,7 @@
       if (p.fl & 1) { m.x = p.x; m.y = p.y; }
       else if (!c.s.pz && !c.s.hd) {
         let dx = (keys.r ? 1 : 0) - (keys.l ? 1 : 0), dy = (keys.d ? 1 : 0) - (keys.u ? 1 : 0);
+        if (c.s.fz & 2) { dx = -dx; dy = -dy; } // Opposite Day
         if (dx || dy) { const l = Math.hypot(dx, dy); m.fx = dx / l; m.fy = dy / l; }
         const b = View.builds.find(x => x.id === myId), spd = b ? b.spd : 190;
         if (dashT > 0) { dashT -= dt; m.x += m.fx * spd * 4.2 * dt; m.y += m.fy * spd * 4.2 * dt; }

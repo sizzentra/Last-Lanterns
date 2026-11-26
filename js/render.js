@@ -48,7 +48,8 @@ const Render = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     const MP = MAPS[s.mp] || MAPS.fields; ctx.fillStyle = MP.bg; ctx.fillRect(0, 0, W, H);
     const shk = V.shake > 0.3 ? V.shake : 0; V.shake *= 0.86;
-    ctx.setTransform(scale, 0, 0, scale, W / 2 - cx * scale + (Math.random() - 0.5) * shk, H / 2 - cy * scale + (Math.random() - 0.5) * shk);
+    const zs = scale * (s.fz & 4 ? 1.75 : 1) * (s.fz & 8 ? -1 : 1); // Dramatic Zoom, and Down Under flips the whole world
+    ctx.setTransform(zs, 0, 0, zs, W / 2 - cx * zs + (Math.random() - 0.5) * shk, H / 2 - cy * zs + (Math.random() - 0.5) * shk);
     const vw = W / scale / 2 + 60, vh = H / scale / 2 + 60, vis = (x, y) => Math.abs(x - cx) < vw && Math.abs(y - cy) < vh;
 
     // ground specks so movement is visible
@@ -123,11 +124,11 @@ const Render = (() => {
     // sparks (xp)
     for (const g of V.gems.values()) { if (!vis(g.x, g.y)) continue; ctx.fillStyle = g.v >= 20 ? '#ff9de0' : g.v >= 5 ? '#9df0ff' : '#ffe9a0'; const z = g.v >= 20 ? 5 : g.v >= 5 ? 4 : 3; ctx.fillRect(g.x - z, g.y - z, z * 2, z * 2); }
     // pickups
-    const K = s.K, kc = ['#ff6b8a', '#6bb8ff', '#ffb347', '#ffd700'], kl = ['+', 'M', '', '?'];
+    const K = s.K, kc = ['#ff6b8a', '#6bb8ff', '#ffb347', '#ffd700', '#ff7ad9'], kl = ['+', 'M', '', '$', '?'];
     ctx.textAlign = 'center'; ctx.font = 'bold 14px system-ui';
     for (let i = 0; i < K.length; i += 4) {
-      const x = K[i + 2], y = K[i + 3], k = K[i + 1]; gl(kc[k], x, y, k === 3 ? 44 : 26);
-      ctx.fillStyle = kc[k]; ctx.beginPath(); if (k === 3) ctx.rect(x - 12, y - 10, 24, 20); else circ(x, y, k === 2 ? 6 : 10); ctx.fill();
+      const x = K[i + 2], y = K[i + 3], k = K[i + 1]; gl(kc[k], x, y, k >= 3 ? 44 + (k === 4 ? 8 * Math.sin(now / 120) : 0) : 26);
+      ctx.fillStyle = kc[k]; ctx.beginPath(); if (k >= 3) ctx.rect(x - 12, y - 10, 24, 20); else circ(x, y, k === 2 ? 6 : 10); ctx.fill();
       ctx.fillStyle = '#111'; ctx.fillText(kl[k], x, y + 5);
     }
 
@@ -137,7 +138,7 @@ const Render = (() => {
     for (let t = 0; t < ENEMIES.length; t++) {
       const L = byT[t], T = ENEMIES[t]; if (!L.length) continue;
       if (T.big) for (let i = 0; i < L.length; i += 3) gl(t === 5 ? '#b9a8ff' : t === 11 ? '#b070ff' : '#ff5a4a', L[i + 1], L[i + 2], T.r * 2.6);
-      const SZ = e => e.st & 128 ? 1.7 : e.st & 256 ? 0.6 : 1;
+      const SZ = e => e.st & 512 ? 6 : e.st & 128 ? 1.7 : e.st & 256 ? 0.6 : 1;
       ctx.fillStyle = T.c; ctx.beginPath(); for (let i = 0; i < L.length; i += 3) circ(L[i + 1], L[i + 2], T.r * SZ(L[i])); ctx.fill();
       ctx.fillStyle = t === 5 ? '#200030' : '#ffdf8a'; ctx.beginPath();
       for (let i = 0; i < L.length; i += 3) { const q = T.r * 0.38 * SZ(L[i]); circ(L[i + 1] - q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); circ(L[i + 1] + q, L[i + 2] - q * 0.4, T.r * 0.16 + 1); }
@@ -201,15 +202,26 @@ const Render = (() => {
       gl(C.c, x, y, p.fl & 16 ? 250 + 20 * Math.sin(now / 70) : 120 + Math.min(110, s.lv * 2.2)); if (p.fl & 2) gl('#ffffff', x, y, 60 + 10 * Math.sin(now / 60));
       ctx.globalCompositeOperation = 'source-over';
       if (p.fl & 8) { ctx.strokeStyle = '#fffbe6'; ctx.lineWidth = 3; ctx.beginPath(); circ(x, y, 21); ctx.stroke(); }
+      const UN = (s.fz & 16) || (p.fl & 64); // Absolute Unit
+      if (UN) { ctx.save(); ctx.translate(x, y); ctx.scale(2.4, 2.4); ctx.translate(-x, -y); }
+      if (p.fl & 32) { ctx.font = '30px system-ui'; ctx.textAlign = 'center'; ctx.fillText(String.fromCodePoint(0x1F414), x, y + 10); } else {
       ctx.fillStyle = '#1b1830'; ctx.beginPath(); circ(x, y, 14); ctx.fill();
       ctx.fillStyle = C.c; ctx.beginPath(); circ(x, y, 10); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.beginPath(); circ(x, y, 4.5); ctx.fill();
+      }
+      if (UN) ctx.restore();
       ctx.fillStyle = '#300'; ctx.fillRect(x - 22, y + 21, 44, 5); ctx.fillStyle = p.hp / p.max > 0.35 ? '#6be06a' : '#ff5a4a'; ctx.fillRect(x - 22, y + 21, 44 * Math.max(0, p.hp / p.max), 5);
       if (id !== myId) { ctx.fillStyle = '#ddd'; ctx.font = '12px system-ui'; ctx.fillText(b.name || '', x, y - 22); }
     }
     ctx.globalCompositeOperation = 'source-over';
     // enemy shots always on top, in warning red
     for (const p of late) { ctx.fillStyle = '#ff2d2d'; ctx.beginPath(); circ(p[0], p[1], 8); ctx.fill(); ctx.fillStyle = '#ffd0d0'; ctx.beginPath(); circ(p[0], p[1], 3.5); ctx.fill(); }
+    // names over the meme elites
+    if (s.el) { ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0'; for (let i = 0; i < s.el.length; i += 2) { const e = c.E.get(s.el[i]); if (e && ARCH[s.el[i + 1]]) ctx.fillText(ARCH[s.el[i + 1]].n, e.x, e.y - 48); } }
+    if (s.br) { // Battle Royale circle: everything outside it is the storm
+      ctx.strokeStyle = '#b070ff'; ctx.lineWidth = 6; ctx.beginPath(); circ(s.br[0], s.br[1], s.br[2]); ctx.stroke();
+      ctx.fillStyle = 'rgba(120,40,200,0.2)'; ctx.beginPath(); ctx.rect(s.br[0] - 4000, s.br[1] - 4000, 8000, 8000); ctx.arc(s.br[0], s.br[1], s.br[2], 0, 6.2832, true); ctx.fill();
+    }
     // floating words
     ctx.font = 'bold 15px system-ui';
     for (const f of V.fx) { const e = f.e; if (e[0] !== 't') continue; const age = (now - f.t) / 900; ctx.globalAlpha = 1 - age; ctx.fillStyle = e[4]; ctx.fillText(e[3], e[1], e[2] - age * 34); }
@@ -219,6 +231,14 @@ const Render = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.72)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    if (s.rl) { ctx.fillStyle = s.rl === 2 ? 'rgba(255,0,0,0.16)' : 'rgba(0,255,90,0.09)'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'center'; ctx.font = '900 44px system-ui'; ctx.fillStyle = s.rl === 2 ? '#ff4040' : '#5dff8a'; ctx.fillText(s.rl === 2 ? 'RED LIGHT: DO NOT MOVE' : 'GREEN LIGHT', W / 2, H * 0.4); }
+    if (s.fz & 2) { ctx.textAlign = 'center'; ctx.font = 'bold 20px system-ui'; ctx.fillStyle = '#ff9de0'; ctx.fillText('OPPOSITE DAY: your controls are reversed', W / 2, H * 0.34); }
+    if (s.fz & 32) { // Unskippable Ad
+      const A = QUIPS.ads[s.ad % QUIPS.ads.length], bw = Math.min(680, W * 0.8), bh = 190, bx = W / 2 - bw / 2, by = H * 0.3;
+      ctx.fillStyle = '#fff200'; ctx.fillRect(bx, by, bw, bh); ctx.strokeStyle = '#ff0050'; ctx.lineWidth = 8; ctx.strokeRect(bx, by, bw, bh);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#ff0050'; ctx.font = '900 ' + Math.min(34, bw / 16) + 'px system-ui'; ctx.fillText(A[0], W / 2, by + 70 + Math.sin(now / 80) * 4);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 18px system-ui'; ctx.fillText(A[1], W / 2, by + 112); ctx.font = '13px system-ui'; ctx.fillText('ADVERTISEMENT  -  you cannot skip this  -  the monsters can still see you', W / 2, by + 160);
+    }
     if (s.fz & 1) { ctx.fillStyle = 'hsla(' + ((now / 6) % 360) + ',100%,55%,0.13)'; ctx.fillRect(0, 0, W, H); } // Disco Inferno
     if (V.banner && now - V.banner.t < 4200) { // big announcements slam in, then fade
       const age = (now - V.banner.t) / 4200, pop = Math.min(1, age * 14), y = H * 0.24;

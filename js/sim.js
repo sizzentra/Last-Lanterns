@@ -9,7 +9,7 @@ const Sim = (() => {
   const ZONE = { fire: 0, thorn: 1, heal: 2, aura: 3, rod: 4, sprout: 5, beacon: 6, spore: 7 };
   const PAIRS = [['burn', 'chill', 'steam'], ['chill', 'shock', 'shatter'], ['burn', 'rot', 'wildfire'], ['shock', 'rot', 'spore'], ['burn', 'shock', 'overload'], ['chill', 'rot', 'frostbite']];
   const ASC = ['dmg', 'area', 'cdr', 'hp', 'crit'];
-  const PICK = { heart: 0, magnet: 1, coin: 2, chest: 3 };
+  const PICK = { heart: 0, magnet: 1, coin: 2, chest: 3, box: 4 };
 
   function newGame(defs, opts = {}) {
     uid = 1;
@@ -18,7 +18,7 @@ const Sim = (() => {
       shrine: null, nextShrine: 70, nextElite: 110, boss: null, bossTime: opts.bossTime || 720, over: null,
       acc: 0, coins: 0, kills: 0, shrines: 0, reactions: 0, evos: 0, dirty: true, dotT: 0, txt: 0, n: defs.length,
       map: MAPS[opts.map] ? opts.map : 'fields', nextWarden: 240, nextSurge: 330, nextAltar: 170, altar: null, curse: 0, bargains: 0, wardens: 0,
-      diff: opts.diff | 0, dm: diffOf(opts.diff | 0), cz: {}, chaos: opts.chaos !== false, nextChaos: 60, fxT: {}, heat: 0, tier: 0, tierT: 0, nextTalk: 25, seed: (Math.random() * 2147483647) | 0, cart: null, nextCart: 300, carts: 0, caches: 0, endless: !!opts.endless, bossKills: 0, won: false, hold: false };
+      diff: opts.diff | 0, dm: diffOf(opts.diff | 0), cz: {}, chaos: opts.chaos !== false, nextChaos: 60, fxT: {}, heat: 0, tier: 0, tierT: 0, nextTalk: 25, nextBox: 40, br: null, rlPhase: -1, rlT: 0, adN: 0, seed: (Math.random() * 2147483647) | 0, cart: null, nextCart: 300, carts: 0, caches: 0, endless: !!opts.endless, bossKills: 0, won: false, hold: false };
     for (const c of opts.curses || []) if (CURSES[c]) G.cz[c] = 1;
     G.world = World.gen(G.seed); G.site = G.world.sites.map(() => ({ cd: 0, used: false }));
     defs.forEach((d, i) => {
@@ -55,6 +55,7 @@ const Sim = (() => {
     for (const b of p.boons) if (BOONS[b].f) BOONS[b].f(s);
     const a = p.asc; s.dmg += 0.06 * (a.dmg || 0); s.area += 0.05 * (a.area || 0); s.cdr += 0.05 * (a.cdr || 0); s.maxhp += 15 * (a.hp || 0); s.crit += 0.03 * (a.crit || 0);
     s.cards += h.cards || 0;
+    if (G.fxT.sale > 0) s.cards += 2; if (p.chickT > 0) s.spd *= 1.6;
     if (G.fxT.zoom > 0) s.spd *= 1.6; if (G.fxT.lag > 0) s.spd *= 0.5;
     if (G.cz.frail) s.maxhp *= 0.7; if (G.cz.famine) s.regen *= 0.5; if (G.cz.dim) s.pickup *= 0.5;
     s.maxhp = Math.round(s.maxhp); s.cdr = Math.max(0.3, s.cdr);
@@ -156,6 +157,9 @@ const Sim = (() => {
     if (T.xp) dropGem(e.x, e.y, T.xp);
     if (e.type === 6) for (let i = 0; i < 3; i++) spawn(7, e.x + rnd(-14, 14), e.y + rnd(-14, 14));
     if (e.type === 11) { G.wardens++; drop(PICK.heart, { x: e.x + 30, y: e.y }); text(e.x, e.y - 50, 'Warden down!', '#c9a8ff'); }
+    if (e.kaiju) for (let i = 0; i < 3; i++) G.pickups.push({ id: uid++, k: PICK.chest, x: e.x + i * 30 - 30, y: e.y });
+    if (e.arch) { voice(ARCH[e.arch].out); if (e.arch === 6) G.pickups.push({ id: uid++, k: PICK.chest, x: e.x + 30, y: e.y }); if (e.arch === 8) for (let i = 0; i < 2; i++) { const o = spawn(4, e.x + i * 60 - 30, e.y, 0.3); o.sz = 2; o.r = ENEMIES[4].r * 0.6; } }
+    if (G.chaos && Math.random() < 0.0025) G.pickups.push({ id: uid++, k: PICK.box, x: e.x, y: e.y });
     if (T.chest) G.pickups.push({ id: uid++, k: PICK.chest, x: e.x, y: e.y });
     else { const r = Math.random(); if (r < 0.004) { if (!G.cz.famine) drop(PICK.heart, e); } else if (r < 0.0055) drop(PICK.magnet, e); else if (r < 0.03) drop(PICK.coin, e); }
     if (p && hasBoon(p, 'blood') && Math.random() < 0.06) p.hp = Math.min(p.st.maxhp, p.hp + 3);
@@ -390,13 +394,15 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
       if (hasBoon(p, 'chair') && p.still > 0.4) p.kin *= 1.5;
       if (hasBoon(p, 'pyramid')) p.kin *= 1 + 0.04 * Math.max(0, G.level - (p.pyrLv || G.level));
       if (on('disco')) p.kin *= 1.4;
+      if (on('unit') || p.unitT > 0) p.kin *= p.unitT > 0 ? 2 : 1.5;
+      if (p.vibeT > 0) p.kin *= 1.3;
       if (p.mcT > 0) { p.mcT -= DT; p.kin *= 3; }
       if (on('friend')) p.kin *= G.players.some(q => q !== p && !q.down && (q.x - p.x) ** 2 + (q.y - p.y) ** 2 < 250 * 250) ? 1.5 : 1.25;
       if (p.ultT > 0) ultTick(p);
       if (p.rigT > 0) p.rigT -= DT;
       if (p.beaconT > 0) { p.beaconT -= DT; p.kin *= 1.25; }
       if (p.dashT > 0) { p.dashT -= DT; zone(ZONE.fire, p.x, p.y, 34 * p.st.area, 2.5 * p.st.dur, (10 + 2 * G.level) * p.st.dmg, p, 'darts'); }
-      weapons(p);
+      if (!(p.chickT > 0)) weapons(p);
       const pr = p.st.pickup * p.st.pickup;
       for (const g of G.gems.values()) { const dx = g.x - p.x, dy = g.y - p.y; if (dx * dx + dy * dy < pr) { G.gems.delete(g.id); G.ev.push(['g-', g.id, p.id]); addXp(g.v, p); } }
       for (const k of G.pickups) {
@@ -405,6 +411,7 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
         if (k.k === PICK.heart) { for (const q of G.players) if (!q.down) q.hp = Math.min(q.st.maxhp, q.hp + q.st.maxhp * 0.25); text(p.x, p.y - 30, 'Healed', '#ff8fa3'); }
         else if (k.k === PICK.magnet) { for (const g of G.gems.values()) { G.ev.push(['g-', g.id, p.id]); addXp(g.v, p); } G.gems.clear(); }
         else if (k.k === PICK.coin) G.coins += 5;
+        else if (k.k === PICK.box) BOX[Math.random() * BOX.length | 0](p);
         else G.pendChest++;
       }
       p.mv = false;
@@ -414,8 +421,9 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
   function input(pid, m) {
     const p = player(pid); if (!p || !G || G.pause || G.over || G.hold) return;
     if (!p.down) {
+      if (G.t < (p.tpT || 0)) { if (m.sk & 1) skill(p); if (m.sk & 2) ult(p); return; } // just teleported: ignore the old position for a moment
       const nx = Math.max(-WORLD, Math.min(WORLD, m.x)), ny = Math.max(-WORLD, Math.min(WORLD, m.y));
-      if (Math.abs(nx - p.x) + Math.abs(ny - p.y) > 0.5) p.mv = true;
+      if (Math.abs(nx - p.x) + Math.abs(ny - p.y) > 0.5) { p.mv = true; p.mvT = G.t; }
       p.x = nx; p.y = ny; World.collide(G.world, p, 13); if (m.fx || m.fy) { p.fx = m.fx; p.fy = m.fy; }
     }
     if (m.sk & 1) skill(p);
@@ -466,7 +474,7 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
       G.curse -= DT;
       if (G.curse <= 0) { quip('bargainWin'); G.bargains++; G.nextAltar = G.t + 170; G.coins += 40; G.pendChest++; addXp(G.xpNeed * 1.5, null); text(alive[0].x, alive[0].y - 60, 'Bargain kept: reward!', '#ffd27a'); }
     }
-    if (!G.boss && G.t >= G.nextElite) { G.nextElite += 80; const [x, y] = around(640, 700); spawn(4, x, y, 0.5 + 0.5 * n); if (G.cz.twins) spawn(4, x + 70, y, 0.5 + 0.5 * n); text(alive[0].x, alive[0].y - 60, 'An elite approaches', '#ff6b5c'); quip('elite'); }
+    if (!G.boss && G.t >= G.nextElite) { G.nextElite += 80; const [x, y] = around(640, 700); const el = spawn(4, x, y, 0.5 + 0.5 * n); if (G.chaos) makeArch(el); if (G.cz.twins) spawn(4, x + 70, y, 0.5 + 0.5 * n); text(alive[0].x, alive[0].y - 60, 'An elite approaches', '#ff6b5c'); quip('elite'); }
     if (!G.shrine && G.t >= G.nextShrine && !G.boss) { const [x, y] = around(280, 430); G.shrine = { x: Math.max(-WORLD + 150, Math.min(WORLD - 150, x)), y: Math.max(-WORLD + 150, Math.min(WORLD - 150, y)), r: 105, prog: 0 }; }
     if (!G.boss && G.t >= G.bossTime) { const [x, y] = around(560, 600); G.boss = spawn(5, x, y, (0.5 + 0.5 * n) / (1 + (G.t / 60) * 0.3 + (G.t / 60) ** 2 * 0.022) * (1 + G.level * 0.06)); G.boss.st = 'idle'; G.boss.bt = 2; G.boss.born = G.t; G.boss.seq = 0; banner(MAPS[G.map].boss, QUIPS.pick(QUIPS.bossIn[G.map] || QUIPS.bossIn.fields), 'boom3'); fx('r', x | 0, y | 0, 300, '#e8e0ff'); }
     if (G.shrine) {
@@ -535,12 +543,76 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
     ['Payday', 'Fifty Embers appear. Do not ask questions.', 'cash', () => { G.coins += 50; }],
     ['Bring Your Blob To Work Day', 'Twelve Bloats arrive. They brought their kids.', 'boing', () => { const p = G.players[Math.random() * G.players.length | 0]; for (let i = 0; i < 12; i++) spawn(6, p.x + Math.cos(i * 0.52) * 560, p.y + Math.sin(i * 0.52) * 560); }],
   ];
+  // ---------- even more chaos: teleports, mystery boxes, meme elites, wilder events ----------
+  const teleport = (p, x, y) => { p.x = Math.max(-WORLD, Math.min(WORLD, x)); p.y = Math.max(-WORLD, Math.min(WORLD, y)); World.collide(G.world, p, 13); p.tpT = G.t + 0.6; G.ev.push(['T', p.id, p.x | 0, p.y | 0]); };
+  const randP = () => G.players[Math.random() * G.players.length | 0];
+  const boxSay = k => voice(QUIPS.pick(QUIPS.box[k]));
+  const BOX = [
+    p => { boxSay('nuke'); sound('boom3'); fx('r', p.x | 0, p.y | 0, 700, '#ffffff'); fx('x', p.x | 0, p.y | 0, 700, '#ffd27a'); inR(p.x, p.y, 700, e => hit(e, 400 * (1 + G.level * 0.3), p, 'shrine', null, 3)); },
+    p => { boxSay('chicken'); sound('quack'); p.chickT = 8; recompute(p); },
+    p => { boxSay('jackpot'); sound('cash'); G.coins += 100; },
+    p => { boxSay('boon'); sound('ding'); const ids = Object.keys(BOONS).filter(b => !hasBoon(p, b) && b !== 'kindred'); if (ids.length) { const b = ids[Math.random() * ids.length | 0]; p.boons.push(b); if (b === 'pyramid') p.pyrLv = G.level; recompute(p); G.ev.push(['t', p.x | 0, p.y - 50 | 0, 'Boon: ' + BOONS[b].name, '#ffd27a']); } },
+    p => { boxSay('swap'); sound('whistleUp'); const o = G.players.find(q => q !== p && !q.down); if (o) { const x = o.x, y = o.y; teleport(o, p.x, p.y); teleport(p, x, y); } else { const a = rnd(0, 6.283); teleport(p, p.x + Math.cos(a) * 600, p.y + Math.sin(a) * 600); } },
+    p => { boxSay('mimic'); sound('sting'); spawn(4, p.x + 60, p.y, 0.6); },
+    p => { boxSay('unit'); sound('boing'); p.unitT = 15; },
+    p => { boxSay('shower'); sound('yay'); for (let i = 0; i < 40; i++) dropGem(p.x + rnd(-170, 170), p.y + rnd(-170, 170), 3); },
+    p => { boxSay('armor'); sound('yay'); p.hp = p.st.maxhp; p.inv = 5; },
+    p => { boxSay('magnet'); sound('whistleUp'); for (const g of G.gems.values()) { G.ev.push(['g-', g.id, p.id]); addXp(g.v, p); } G.gems.clear(); },
+    p => { boxSay('amnesia'); sound('scratch'); p.rerolls += 2; },
+    p => { boxSay('nothing'); sound('trombone'); },
+    p => { boxSay('level'); sound('ding'); addXp(G.xpNeed - G.xp + 1, null); },
+    p => { boxSay('geese'); sound('honk'); for (let i = 0; i < 3; i++) { const e = spawn(12, p.x + rnd(-250, 250), p.y + rnd(-250, 250)); e.life = 25; e.hp = e.maxhp = 300 * (1 + G.level * 0.35); } },
+  ];
+  function makeArch(e) { // give an elite a personality
+    const a = e.arch = 1 + (Math.random() * 8 | 0);
+    if (a === 1) { e.hp = e.maxhp = e.hp * 2; e.spd *= 0.7; } else if (a === 2) { e.spd *= 1.9; e.hp = e.maxhp = e.hp * 0.7; } else if (a === 6) { e.hp = e.maxhp = e.hp * 0.4; } else if (a === 7) { e.hp = e.maxhp = e.hp * 1.3; e.wa = rnd(0, 6.283); }
+    voice(ARCH[a].in);
+  }
+  CHAOS.push(
+    ['Battle Royale', 'The circle is closing. Outside it, you melt.', 'sting', () => { const p = randP(); G.br = { x: p.x, y: p.y, r: 950 }; G.fxT.br = 28; quip('circle'); }],
+    ['Red Light, Green Light', 'Move on red and you get hurt. So do they.', 'sting', () => { G.fxT.rl = 18; G.rlPhase = -1; }],
+    ['Emergency Meeting', 'Everyone to the table. Now.', 'error', () => { let x = 0, y = 0, n = 0; allP(p => { if (!p.down) { x += p.x; y += p.y; n++; } }); if (n) allP(p => { if (!p.down) teleport(p, x / n + rnd(-40, 40), y / n + rnd(-40, 40)); }); for (const e of G.enemies) e.frozen = Math.max(e.frozen, 3); quip('meeting'); }],
+    ['Bullet Time', 'Everything slows down except you. Whoa.', 'whistle', () => { G.fxT.btime = 8; }],
+    ['Free Legendary Boon!', 'Just kidding.', 'trombone', () => { G.fxT.roll = 5; }],
+    ['Gacha Pull', 'Everyone gets a random Boon. No refunds, no pity timer.', 'cash', () => allP(p => BOX[3](p))],
+    ['Skip Cutscene', 'The boss arrives 45 seconds sooner. You are welcome.', 'scratch', () => { G.bossTime -= 45; }],
+    ['It Is Just A Big One', 'Do not panic. It is carrying three chests.', 'boom3', () => { const p = randP(), e = spawn(0, p.x + 500, p.y, 1); e.hp = e.maxhp = 2500 * (1 + G.level * 0.5) * G.dm.hp; e.r = 66; e.sz = 3; e.big = true; e.kaiju = true; e.dmg *= 3; e.spd *= 0.8; }],
+    ['Opposite Day', 'Up is down. Left is right. Good luck.', 'scratch', () => { G.fxT.opp = 8; }],
+    ['Vibe Check', 'Full health? Bonus damage. Otherwise, here, have a heal.', 'ding', () => allP(p => { if (p.down) return; if (p.hp >= p.st.maxhp * 0.95) p.vibeT = 15; else p.hp = Math.min(p.st.maxhp, p.hp + p.st.maxhp * 0.3); })],
+    ['Unskippable Ad', 'Your night will resume. Eventually.', 'error', () => { G.fxT.ad = 6; G.adN = Math.random() * QUIPS.ads.length | 0; }],
+    ['Dramatic Zoom', 'Enhance. Enhance. Enhance.', 'boom3', () => { G.fxT.zoomIn = 7; }],
+    ['Down Under', 'The whole world is upside down now. Deal with it.', 'boing', () => { G.fxT.flip = 7; }],
+    ['Absolute Units', 'Everyone is enormous and hits 50% harder.', 'boing', () => { G.fxT.unit = 15; }],
+    ['Black Friday', 'Two extra cards on every choice for 40 seconds. Trample responsibly.', 'cash', () => { G.fxT.sale = 40; allP(recompute); }],
+    ['Mystery Box Party', 'Six boxes. What is in them? Regret, mostly.', 'yay', () => { const p = randP(); for (let i = 0; i < 6; i++) G.pickups.push({ id: uid++, k: 4, x: p.x + Math.cos(i * 1.05) * 230, y: p.y + Math.sin(i * 1.05) * 230 }); }],
+    ['Everybody Is A Chicken', 'Nobody can attack. Everybody is fast. Eight seconds. Bawk.', 'quack', () => allP(p => { p.chickT = 8; recompute(p); })],
+    ['Musical Chairs', 'Everyone swaps places. Hope you liked where you were.', 'whistleUp', () => { const L = G.players.filter(p => !p.down), pos = L.map(p => [p.x, p.y]); if (L.length > 1) L.forEach((p, i) => { const q = pos[(i + 1) % L.length]; teleport(p, q[0], q[1]); }); else if (L[0]) { const a = rnd(0, 6.283); teleport(L[0], L[0].x + Math.cos(a) * 500, L[0].y + Math.sin(a) * 500); } }]
+  );
+  function chaosTick2() {
+    // mystery boxes turn up on their own every so often
+    if (G.chaos && G.t >= G.nextBox) { G.nextBox = G.t + rnd(35, 55); const p = randP(), a = rnd(0, 6.283); G.pickups.push({ id: uid++, k: 4, x: Math.max(-WORLD + 60, Math.min(WORLD - 60, p.x + Math.cos(a) * 320)), y: Math.max(-WORLD + 60, Math.min(WORLD - 60, p.y + Math.sin(a) * 320)) }); }
+    if (on('br')) { // Battle Royale: stay inside the shrinking circle
+      const b = G.br; b.r = Math.max(240, b.r - 30 * DT);
+      if (((G.t * 30) | 0) % 15 === 0) allP(p => { if (!p.down && (p.x - b.x) ** 2 + (p.y - b.y) ** 2 > b.r * b.r) { p.hp -= p.st.maxhp * 0.04; if (p.hp <= 0) { p.inv = 0; p.hp = 1; hurt(p, 999); } } });
+    } else G.br = null;
+    if (on('rl')) { // Red Light, Green Light
+      const ph = (G.fxT.rl / 3 | 0) % 2; // 1 = red
+      if (ph !== G.rlPhase) { G.rlPhase = ph; G.rlT = G.t + 0.7; quip(ph ? 'redLight' : 'greenLight'); sound(ph ? 'error' : 'ding'); }
+      if (ph) { for (const e of G.enemies) if (!e.big) e.frozen = Math.max(e.frozen, 0.15); if (G.t > G.rlT && ((G.t * 30) | 0) % 15 === 0) allP(p => { if (!p.down && G.t - (p.mvT || -9) < 0.3) { p.inv = 0; hurt(p, p.st.maxhp * 0.1 + p.st.armor); if (Math.random() < 0.4) quip('caught', p.name); sound('bonk'); } }); }
+    } else G.rlPhase = -1;
+    for (const p of G.players) { // personal timers
+      if (p.chickT > 0) { p.chickT -= DT; if (p.chickT <= 0) recompute(p); }
+      if (p.unitT > 0) p.unitT -= DT; if (p.vibeT > 0) p.vibeT -= DT;
+    }
+  }
   function chaosTick() {
+    chaosTick2();
     for (const k in G.fxT) if (G.fxT[k] > 0) {
       G.fxT[k] -= DT;
       if (G.fxT[k] <= 0) { // an effect just ended: put things back
         if (k === 'big' || k === 'tiny') for (const e of G.enemies) if (e.sz) { e.sz = 0; e.r = ENEMIES[e.type].r; }
-        if (k === 'zoom' || k === 'lag') allP(recompute);
+        if (k === 'zoom' || k === 'lag' || k === 'sale') allP(recompute);
+        if (k === 'roll') { G.coins += 25; quip('rolled'); sound('cash'); }
       }
     }
     if (on('anvil') && (G.anvA = (G.anvA || 0) + DT) >= 0.3 && G.enemies.length) { G.anvA = 0; const e = G.enemies[Math.random() * G.enemies.length | 0]; fx('x', e.x | 0, e.y | 0, 80, '#b0b0c0'); inR(e.x, e.y, 80, o => hit(o, 60 * (1 + G.level * 0.2), null, 'shrine', null, 3)); }
@@ -608,7 +680,7 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
       const dx = tp.x - e.x, dy = tp.y - e.y, d = Math.sqrt(bd) || 1, big = e.big;
       if (e.type === 5) { (G.map === 'mire' ? bellAI : bossAI)(e, tp, d, dx, dy); continue; }
       if (d > 1500) { e.dead = true; continue; } // left far behind: quietly remove
-      const sp = e.spd * (G.fxT.lag > 0 ? 0.5 : 1) * (G.fxT.monday > 0 ? 1.3 : 1) * (e.frozen > 0 && !big ? 0 : 1) * (e.chill > 0 ? (big ? 0.85 : e.src && hasBoon(e.src, 'perma') ? 0.35 : 0.6) : 1) * (e.slow > 0 ? 0.65 : 1) * DT;
+      const sp = e.spd * (G.fxT.lag > 0 ? 0.5 : 1) * (G.fxT.monday > 0 ? 1.3 : 1) * (G.fxT.btime > 0 ? 0.3 : 1) * (e.hype > 0 ? 1.35 : 1) * (e.frozen > 0 && !big ? 0 : 1) * (e.chill > 0 ? (big ? 0.85 : e.src && hasBoon(e.src, 'perma') ? 0.35 : 0.6) : 1) * (e.slow > 0 ? 0.65 : 1) * DT;
       if (e.type === 12) { // Golden Goose: runs away from you
         e.x = Math.max(-WORLD, Math.min(WORLD, e.x - dx / d * sp)); e.y = Math.max(-WORLD, Math.min(WORLD, e.y - dy / d * sp)); e.life -= DT;
         if (e.life <= 0) { e.dead = true; quip('gooseLost'); sound('honk'); continue; }
@@ -623,10 +695,15 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
       } else if (e.type === 10) { // Wisp: rush in, flash, explode
         if (e.st === 'wind') { e.bt -= DT; if (e.bt <= 0) { fx('x', e.x | 0, e.y | 0, 85, '#ff5a2a'); for (const p of alive) if ((p.x - e.x) ** 2 + (p.y - e.y) ** 2 < 85 * 85) hurt(p, e.dmg); e.dead = true; continue; } }
         else { e.x += dx / d * sp; e.y += dy / d * sp; if (d < 46) { e.st = 'wind'; e.bt = 0.55; } }
+      } else if (e.arch === 7) { // the NPC walks its route and ignores you
+        e.wa += rnd(-0.05, 0.05); e.x += Math.cos(e.wa) * sp; e.y += Math.sin(e.wa) * sp; if (Math.abs(e.x) > WORLD || Math.abs(e.y) > WORLD || d > 900) e.wa = Math.atan2(dy, dx);
       } else { e.x += dx / d * sp; e.y += dy / d * sp; }
+      if (e.hype > 0) e.hype -= DT;
+      if (e.arch === 5 && dot) inR(e.x, e.y, 220, o => { o.hype = 0.8; });
+      if (e.arch === 4 && (e.kt = (e.kt || 0) + DT) >= 5) { e.kt = 0; for (let i = 0; i < 4; i++) spawn(7, e.x + rnd(-40, 40), e.y + rnd(-40, 40)); if (Math.random() < 0.4) voice('I want to speak to your manager.'); }
       if (e.type === 8 && dot) inR(e.x, e.y, 125, o => { o.shT = 0.7; }); // Warder: halves damage to enemies near it
       if (e.type === 11) { e.at -= DT; if (e.at <= 0 && e.frozen <= 0) { e.at = 3; for (let i = 0; i < 12; i++) eshot(e, i / 12 * 6.283 + G.t, 160, e.dmg * 0.5); if (Math.random() < 0.5) for (let i = 0; i < 4; i++) spawn(7, e.x + rnd(-50, 50), e.y + rnd(-50, 50)); } }
-      if (e.type !== 10 && e.type !== 12 && d < e.r + 13 && e.hc <= 0) { hurt(tp, e.dmg * (e.st === 'dash' ? 1.5 : 1)); e.hc = 0.7; }
+      if (e.type !== 10 && e.type !== 12 && d < e.r + 13 && e.hc <= 0) { hurt(tp, e.dmg * (e.st === 'dash' ? 1.5 : 1)); e.hc = 0.7; if (e.arch === 3 && G.coins > 0) { G.coins = Math.max(0, G.coins - 8); G.ev.push(['t', tp.x | 0, tp.y - 40 | 0, 'Rent is due: -8 Embers', '#ff6b5c']); sound('cash'); } }
     }
     for (const e of L) if (!e.dead && e.type !== 5) World.collide(G.world, e, e.r * 0.7);
     // keep enemies from stacking on one spot
@@ -750,10 +827,10 @@ w.acc += DT;         const r = (85 + 8 * w.lvl) * p.st.area * (w.evo ? 1.5 : 1) 
   }
   function snap() {
     const s = { t: 's', tm: Math.round(G.t * 10) / 10, lv: G.level, xp: Math.round(G.xp), xn: Math.round(G.xpNeed), k: G.kills, pz: G.pause ? Math.ceil(G.pause.t) : 0,
-      P: [], E: [], S: [], Z: [], K: [], B: G.beams, O: G.orbs, ev: G.ev, sh: 0, bo: 0, hd: G.hold ? 1 : 0, fz: G.fxT.disco > 0 ? 1 : 0, sd: G.seed, si: G.site.map(t => t.used ? -1 : Math.ceil(Math.max(0, t.cd))), ca: G.cart ? [G.cart.x | 0, G.cart.y | 0, G.cart.tx | 0, G.cart.ty | 0, Math.ceil(G.cart.life)] : 0, mp: G.map, cu: G.curse > 0 ? Math.ceil(G.curse) : 0, al: G.altar ? [G.altar.x | 0, G.altar.y | 0, G.altar.r, Math.round(G.altar.prog * 100)] : 0 };
+      P: [], E: [], S: [], Z: [], K: [], B: G.beams, O: G.orbs, ev: G.ev, sh: 0, bo: 0, hd: G.hold ? 1 : 0, fz: (on('disco') ? 1 : 0) | (on('opp') ? 2 : 0) | (on('zoomIn') ? 4 : 0) | (on('flip') ? 8 : 0) | (on('unit') ? 16 : 0) | (on('ad') ? 32 : 0), ad: G.adN, br: G.br ? [G.br.x | 0, G.br.y | 0, G.br.r | 0] : 0, rl: on('rl') ? (G.rlPhase ? 2 : 1) : 0, el: G.enemies.filter(e => e.arch).flatMap(e => [e.id, e.arch]), sd: G.seed, si: G.site.map(t => t.used ? -1 : Math.ceil(Math.max(0, t.cd))), ca: G.cart ? [G.cart.x | 0, G.cart.y | 0, G.cart.tx | 0, G.cart.ty | 0, Math.ceil(G.cart.life)] : 0, mp: G.map, cu: G.curse > 0 ? Math.ceil(G.curse) : 0, al: G.altar ? [G.altar.x | 0, G.altar.y | 0, G.altar.r, Math.round(G.altar.prog * 100)] : 0 };
     G.ev = [];
-    for (const p of G.players) s.P.push([p.id, Math.round(p.x), Math.round(p.y), Math.ceil(p.hp), p.st.maxhp, (p.down ? 1 : 0) | (p.inv > 0 ? 2 : 0) | (p.dashT > 0 ? 4 : 0) | (p.ward > 0 ? 8 : 0) | (p.ultT > 0 ? 16 : 0), Math.round(p.rev * 100), p.skillT > 0 ? Math.ceil(p.skillT * 10) : 0, G.level < 6 ? -1 : Math.ceil(Math.max(0, p.ultCd))]);
-    for (const e of G.enemies) s.E.push(e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(1, Math.round(e.hp / e.maxhp * 100)), (e.burn > 0 ? 1 : 0) | (e.chill > 0 ? 2 : 0) | (e.shock > 0 ? 4 : 0) | (e.rot > 0 ? 8 : 0) | (e.frozen > 0 ? 16 : 0) | (e.st === 'wind' ? 32 : 0) | (e.shT > 0 && e.type !== 8 ? 64 : 0) | (e.sz === 1 ? 128 : 0) | (e.sz === 2 ? 256 : 0));
+    for (const p of G.players) s.P.push([p.id, Math.round(p.x), Math.round(p.y), Math.ceil(p.hp), p.st.maxhp, (p.down ? 1 : 0) | (p.inv > 0 ? 2 : 0) | (p.dashT > 0 ? 4 : 0) | (p.ward > 0 ? 8 : 0) | (p.ultT > 0 ? 16 : 0) | (p.chickT > 0 ? 32 : 0) | (p.unitT > 0 ? 64 : 0), Math.round(p.rev * 100), p.skillT > 0 ? Math.ceil(p.skillT * 10) : 0, G.level < 6 ? -1 : Math.ceil(Math.max(0, p.ultCd))]);
+    for (const e of G.enemies) s.E.push(e.id, e.type, Math.round(e.x), Math.round(e.y), Math.max(1, Math.round(e.hp / e.maxhp * 100)), (e.burn > 0 ? 1 : 0) | (e.chill > 0 ? 2 : 0) | (e.shock > 0 ? 4 : 0) | (e.rot > 0 ? 8 : 0) | (e.frozen > 0 ? 16 : 0) | (e.st === 'wind' ? 32 : 0) | (e.shT > 0 && e.type !== 8 ? 64 : 0) | (e.sz === 1 ? 128 : 0) | (e.sz === 2 ? 256 : 0) | (e.sz === 3 ? 512 : 0));
     for (const o of G.shots) s.S.push(o.id, o.k, Math.round(o.x), Math.round(o.y), Math.round(o.r), o.p ? o.p.id : -1);
     for (const z of G.zones) s.Z.push(z.k, Math.round(z.x), Math.round(z.y), Math.round(z.r), z.p ? z.p.id : -1);
     for (const a of G.auras) s.Z.push(a);
